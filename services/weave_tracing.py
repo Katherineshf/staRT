@@ -13,6 +13,7 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 _initialized = False
+_client = None  # weave client handle, used to attach feedback to past calls
 
 
 def _is_enabled() -> bool:
@@ -33,7 +34,7 @@ def _project_name() -> str:
 
 def init_weave() -> None:
     """Initialize Weave once at app startup without blocking the app on failures."""
-    global _initialized
+    global _initialized, _client
 
     if _initialized or not _is_enabled():
         return
@@ -41,7 +42,7 @@ def init_weave() -> None:
     try:
         import weave
 
-        weave.init(
+        _client = weave.init(
             _project_name(),
             global_attributes={
                 "app": "staRT",
@@ -69,3 +70,38 @@ def weave_op(name: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
             return func
 
     return decorator
+
+
+async def call_op(op, *args, **kwargs):
+    """Invoke a Weave op capturing its Call, returning ``(result, call_id)``.
+
+    Falls back to a plain call (``call_id=None``) when Weave is disabled or the
+    decorator returned the bare function.
+    """
+    call_method = getattr(op, "call", None)
+    if not _is_enabled() or call_method is None:
+        return await op(*args, **kwargs), None
+    try:
+        result, call = await op.call(*args, **kwargs)
+        return result, getattr(call, "id", None)
+    except Exception as exc:
+        logger.warning("Weave call capture failed (%s); running op directly", exc)
+        return await op(*args, **kwargs), None
+
+
+def add_feedback(call_id: str | None, *, reaction: str | None = None, note: str | None = None) -> None:
+    """Attach a reaction and/or note to a previously traced call (non-blocking).
+
+    This is how physician feedback (Loop 1) shows up on the original generate call
+    in the Weave UI.
+    """
+    if not call_id or not _is_enabled() or _client is None:
+        return
+    try:
+        call = _client.get_call(call_id)
+        if reaction:
+            call.feedback.add_reaction(reaction)
+        if note:
+            call.feedback.add_note(note)
+    except Exception as exc:
+        logger.warning("Weave feedback failed (non-blocking): %s", exc)
