@@ -72,7 +72,7 @@ async def get_patient(patient_id: str):
     try:
         data = _load_json("mock_patients.json")
         for raw in data:
-            if raw["patient_id"] == patient_id:
+            if raw["case_id"] == patient_id:
                 return Patient.model_validate(raw)
         raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found")
     except HTTPException:
@@ -107,7 +107,7 @@ async def get_physician_preferences(physician_id: str):
 
         data = _load_json("physician_preferences.json")
         for raw in data:
-            if raw["physician_id"] == physician_id:
+            if raw["physician"] == physician_id:
                 return PhysicianPreferences.model_validate(raw)
         raise HTTPException(status_code=404, detail=f"Physician {physician_id} not found")
     except HTTPException:
