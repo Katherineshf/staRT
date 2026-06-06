@@ -1,38 +1,50 @@
 [
   {
-    "patient_id": "PAT-001",
-    "age": 58,
-    "sex": "F",
-    "diagnosis": "Glioblastoma multiforme (GBM)",
-    "tumor_location": "Left temporal lobe",
-    "tumor_volume_cc": 42.5,
-    "kps_score": 80,
-    "prior_surgery": true,
-    "prior_chemo": true,
-    "notes": "Post-resection cavity with residual enhancing disease at posterior margin."
+    "case_id": "PAT-001",
+    "patient_features": {
+      "age": 58,
+      "sex": "Female",
+      "condition": "Glioblastoma multiforme (GBM)"
+    },
+    "case_features": {
+      "tumor_type": "Glioblastoma multiforme (GBM)",
+      "target_volume_cc": 42.5,
+      "oars": []
+    },
+    "planning_variables": {},
+    "results": {},
+    "physician": "Unassigned"
   },
   {
-    "patient_id": "PAT-002",
-    "age": 71,
-    "sex": "M",
-    "diagnosis": "Metastatic brain lesion (NSCLC)",
-    "tumor_location": "Right cerebellum",
-    "tumor_volume_cc": 8.2,
-    "kps_score": 90,
-    "prior_surgery": false,
-    "prior_chemo": false,
-    "notes": "Solitary cerebellar metastasis; systemic disease controlled on immunotherapy."
+    "case_id": "PAT-002",
+    "patient_features": {
+      "age": 71,
+      "sex": "Male",
+      "condition": "Metastatic brain lesion (NSCLC)"
+    },
+    "case_features": {
+      "tumor_type": "Metastatic brain lesion (NSCLC)",
+      "target_volume_cc": 8.2,
+      "oars": []
+    },
+    "planning_variables": {},
+    "results": {},
+    "physician": "Unassigned"
   },
   {
-    "patient_id": "PAT-003",
-    "age": 45,
-    "sex": "F",
-    "diagnosis": "Meningioma (WHO Grade I)",
-    "tumor_location": "Parasagittal frontal",
-    "tumor_volume_cc": 28.0,
-    "kps_score": 100,
-    "prior_surgery": false,
-    "prior_chemo": false,
-    "notes": "Incidentally found on MRI; symptomatic with headaches and mild leg weakness."
+    "case_id": "PAT-003",
+    "patient_features": {
+      "age": 45,
+      "sex": "Female",
+      "condition": "Meningioma (WHO Grade I)"
+    },
+    "case_features": {
+      "tumor_type": "Meningioma (WHO Grade I)",
+      "target_volume_cc": 28.0,
+      "oars": []
+    },
+    "planning_variables": {},
+    "results": {},
+    "physician": "Unassigned"
   }
 ]
