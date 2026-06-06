@@ -1,0 +1,72 @@
+{
+  "case_id": "PA_001",
+
+  "patient_features": {
+    "age": 52,
+    "sex": "Female",
+    "condition": "Non-functioning Pituitary Adenoma"
+  },
+
+  "case_features": {
+    "tumor_type": "Pituitary Adenoma",
+    "target_volume_cc": 4.5,
+    "prescription_gy": 25,
+    "fractions": 5,
+    "oars": [
+      {
+        "type": "Optic Chiasm",
+        "distance_to_tumor_mm": 2
+      },
+      {
+        "type": "Left Optic Nerve",
+        "distance_to_tumor_mm": 3
+      },
+      {
+        "type": "Brainstem",
+        "distance_to_tumor_mm": 8
+      }
+    ]
+  },
+
+  "planning_variables": {
+    "algorithm": "Monte Carlo",
+    "arcs": 4,
+    "arc_type": "Non-Coplanar",
+    "ptv_margin_mm": 1,
+    "oar_prv_margins": {
+      "Optic Chiasm": 1,
+      "Left Optic Nerve": 1,
+      "Brainstem": 2
+    },
+    "target_priority": "High",
+    "normal_tissue_priority": "High",
+    "modulation_level": "Medium"
+  },
+
+  "results": {
+    "ci": 1.08,
+    "gi": 2.9,
+    "v12_cc": 0.35,
+    "mu": 6400,
+    "coverage_percent": 99.2,
+    "oar_results": [
+      {
+        "type": "Optic Chiasm",
+        "dmax_gy": 23.5,
+        "d0_2_gy": 22.8
+      },
+      {
+        "type": "Left Optic Nerve",
+        "dmax_gy": 19.1,
+        "d0_2_gy": 18.5
+      },
+      {
+        "type": "Brainstem",
+        "dmax_gy": 8.4,
+        "d0_5_gy": 7.8
+      }
+    ]
+  },
+
+  "physician": "Dr. Smith"
+}
