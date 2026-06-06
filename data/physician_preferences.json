@@ -1,0 +1,20 @@
+[
+  {
+    "physician_id": "PHY-001",
+    "favors_lower_mu": true,
+    "favors_higher_coverage": true,
+    "favors_fewer_fractions": false,
+    "risk_tolerance": "moderate",
+    "technique_preferences": ["VMAT", "SBRT"],
+    "notes": "Prefers VMAT for GBM; SBRT for oligometastases. Sensitive to optic apparatus dose."
+  },
+  {
+    "physician_id": "PHY-002",
+    "favors_lower_mu": false,
+    "favors_higher_coverage": true,
+    "favors_fewer_fractions": true,
+    "risk_tolerance": "aggressive",
+    "technique_preferences": ["IMRT", "VMAT"],
+    "notes": "Willing to accept higher MU for better conformity. Favors hypofractionation when safe."
+  }
+]

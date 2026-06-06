@@ -1,0 +1,133 @@
+[
+  {
+    "case_id": "CASE-001",
+    "patient": {
+      "patient_id": "HIST-001",
+      "age": 62,
+      "sex": "M",
+      "diagnosis": "Glioblastoma multiforme (GBM)",
+      "tumor_location": "Right frontal lobe",
+      "tumor_volume_cc": 38.0,
+      "kps_score": 70,
+      "prior_surgery": true,
+      "prior_chemo": true
+    },
+    "plan": {
+      "plan_id": "PLAN-H001",
+      "total_dose_gy": 60.0,
+      "fractions": 30,
+      "technique": "VMAT",
+      "beam_angles": [0, 72, 144, 216, 288],
+      "metrics": {
+        "conformity_index": 1.12,
+        "homogeneity_index": 1.08,
+        "monitor_units": 4200,
+        "optic_apparatus_dmax_gy": 52.3,
+        "brainstem_dmax_gy": 54.1,
+        "ptv_coverage_percent": 98.5
+      },
+      "rationale": "Standard Stupp protocol with VMAT for improved conformity around critical structures."
+    },
+    "outcome": {
+      "patient_id": "HIST-001",
+      "plan_id": "PLAN-H001",
+      "physician_id": "PHY-001",
+      "tumor_response": "partial",
+      "side_effects": [
+        { "name": "fatigue", "grade": 2 },
+        { "name": "alopecia", "grade": 2 }
+      ],
+      "would_reuse_plan": true,
+      "outcome_weight": 0.82
+    },
+    "outcome_weight": 0.82,
+    "physician_id": "PHY-001"
+  },
+  {
+    "case_id": "CASE-002",
+    "patient": {
+      "patient_id": "HIST-002",
+      "age": 55,
+      "sex": "F",
+      "diagnosis": "Metastatic brain lesion (breast)",
+      "tumor_location": "Left parietal lobe",
+      "tumor_volume_cc": 5.5,
+      "kps_score": 90,
+      "prior_surgery": false,
+      "prior_chemo": true
+    },
+    "plan": {
+      "plan_id": "PLAN-H002",
+      "total_dose_gy": 30.0,
+      "fractions": 5,
+      "technique": "SBRT",
+      "beam_angles": [0, 90, 180, 270],
+      "metrics": {
+        "conformity_index": 1.05,
+        "homogeneity_index": 1.12,
+        "monitor_units": 2800,
+        "optic_apparatus_dmax_gy": 8.2,
+        "brainstem_dmax_gy": 6.5,
+        "ptv_coverage_percent": 99.2
+      },
+      "rationale": "Single-fraction-equivalent SBRT for small metastasis with sharp dose falloff."
+    },
+    "outcome": {
+      "patient_id": "HIST-002",
+      "plan_id": "PLAN-H002",
+      "physician_id": "PHY-001",
+      "tumor_response": "complete",
+      "side_effects": [
+        { "name": "headache", "grade": 1 }
+      ],
+      "would_reuse_plan": true,
+      "outcome_weight": 0.95
+    },
+    "outcome_weight": 0.95,
+    "physician_id": "PHY-001"
+  },
+  {
+    "case_id": "CASE-003",
+    "patient": {
+      "patient_id": "HIST-003",
+      "age": 68,
+      "sex": "M",
+      "diagnosis": "Meningioma (WHO Grade I)",
+      "tumor_location": "Sphenoid wing",
+      "tumor_volume_cc": 35.0,
+      "kps_score": 80,
+      "prior_surgery": false,
+      "prior_chemo": false
+    },
+    "plan": {
+      "plan_id": "PLAN-H003",
+      "total_dose_gy": 54.0,
+      "fractions": 30,
+      "technique": "IMRT",
+      "beam_angles": [0, 60, 120, 180, 240, 300],
+      "metrics": {
+        "conformity_index": 1.18,
+        "homogeneity_index": 1.06,
+        "monitor_units": 5100,
+        "optic_apparatus_dmax_gy": 48.5,
+        "brainstem_dmax_gy": 50.2,
+        "ptv_coverage_percent": 97.8
+      },
+      "rationale": "IMRT with six-field arrangement to spare optic apparatus in skull base meningioma."
+    },
+    "outcome": {
+      "patient_id": "HIST-003",
+      "plan_id": "PLAN-H003",
+      "physician_id": "PHY-002",
+      "tumor_response": "stable",
+      "side_effects": [
+        { "name": "cognitive changes", "grade": 2 },
+        { "name": "fatigue", "grade": 2 }
+      ],
+      "would_reuse_plan": false,
+      "outcome_weight": 0.55
+    },
+    "outcome_weight": 0.55,
+    "physician_id": "PHY-002"
+  }
+]
