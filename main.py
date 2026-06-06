@@ -23,6 +23,7 @@ from models.schemas import (
     PhysicianPreferences,
 )
 from services.redis_client import redis_client
+from services.weave_tracing import init_weave
 
 load_dotenv()
 
@@ -37,6 +38,7 @@ def _load_json(filename: str) -> list | dict:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    init_weave()
     await redis_client.connect()
     yield
     await redis_client.disconnect()

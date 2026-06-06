@@ -1,8 +1,10 @@
 """Agent 1 — Plan Generator."""
 
 from models.schemas import CandidatePlan, Patient, PastCase, PhysicianPreferences
+from services.weave_tracing import weave_op
 
 
+@weave_op("agent_1_generate_candidate_plans")
 async def generate_candidate_plans(
     patient: Patient,
     past_cases: list[PastCase],

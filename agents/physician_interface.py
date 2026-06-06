@@ -1,8 +1,10 @@
 """Agent 3 — Physician Interface."""
 
 from models.schemas import ChallengedPlan, PhysicianChoice, PhysicianPreferences
+from services.weave_tracing import weave_op
 
 
+@weave_op("agent_3_process_physician_feedback")
 async def process_physician_feedback(
     physician_id: str,
     run_id: str,
