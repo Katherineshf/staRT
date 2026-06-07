@@ -19,6 +19,18 @@ const pageLabels: Record<Page, string> = {
   engine: "Recommendation Engine",
 };
 
+// Patients have no human name in the schema — identity is the case_id plus
+// demographics. Build an honest label (never fabricate a name).
+function patientLabel(patient: PatientVM | null): string {
+  if (!patient) return "Loading patient…";
+  const demo = [patient.age, patient.sex, patient.condition].filter(
+    (v) => v && v !== DASH,
+  );
+  return demo.length
+    ? `Patient ${patient.caseId} · ${demo.join(" · ")}`
+    : `Patient ${patient.caseId}`;
+}
+
 export default function Home() {
   const [activePage, setActivePage] = useState<Page>("patient");
   const [patient, setPatient] = useState<PatientVM | null>(null);
@@ -95,6 +107,18 @@ export default function Home() {
     setActivePage("patient");
   }
 
+  // "Start new case" — clears the finished run (same patient stays loaded) and
+  // returns to the engine so the loop can run again and show learned preferences.
+  function resetCase() {
+    setStrategies(null);
+    setRunId(null);
+    setSelectedStrategyId(null);
+    setAcceptedStrategyId(null);
+    setAcceptedNote(null);
+    setGenerateError(null);
+    setActivePage("engine");
+  }
+
   function closeSaveModal() {
     setSavePlanOpen(false);
     setSaveError(null);
@@ -156,10 +180,12 @@ export default function Home() {
                 selectedStrategy && acceptedStrategyId === selectedStrategy.id,
               )}
               onAccept={() => setSavePlanOpen(true)}
+              onReset={resetCase}
             />
           )}
           {activePage === "engine" && (
             <RecommendationEngine
+              patient={patient}
               strategies={strategies}
               runId={runId}
               generating={generating}
@@ -247,11 +273,13 @@ function PatientView({
   selectedStrategy,
   accepted,
   onAccept,
+  onReset,
 }: {
   patient: PatientVM | null;
   selectedStrategy: Strategy | null;
   accepted: boolean;
   onAccept: () => void;
+  onReset: () => void;
 }) {
   const subtitle = !selectedStrategy
     ? "Select a strategy in the Recommendation Engine to review it here."
@@ -263,7 +291,9 @@ function PatientView({
     <div className="space-y-7">
       <section className="flex flex-wrap items-center justify-between gap-4 rounded-[22px] bg-white p-5 shadow-sm">
         <div>
-          <p className="text-sm font-medium text-neutral-500">Patient View</p>
+          <p className="text-sm font-medium text-neutral-500">
+            {patientLabel(patient)}
+          </p>
           <h2 className="mt-1 text-2xl font-semibold tracking-tight">
             {selectedStrategy
               ? `Reviewing ${selectedStrategy.name}`
@@ -271,13 +301,23 @@ function PatientView({
           </h2>
           <p className="mt-1 text-sm text-neutral-500">{subtitle}</p>
         </div>
-        <button
-          onClick={onAccept}
-          disabled={!selectedStrategy || accepted}
-          className="rounded-full bg-[#46d47b] px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-[#37c06b] disabled:bg-neutral-200 disabled:text-neutral-400"
-        >
-          {accepted ? "Strategy Accepted ✓" : "Accept Strategy"}
-        </button>
+        <div className="flex items-center gap-3">
+          {accepted && (
+            <button
+              onClick={onReset}
+              className="rounded-full bg-black px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-neutral-800"
+            >
+              Start new case →
+            </button>
+          )}
+          <button
+            onClick={onAccept}
+            disabled={!selectedStrategy || accepted}
+            className="rounded-full bg-[#46d47b] px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-[#37c06b] disabled:bg-neutral-200 disabled:text-neutral-400"
+          >
+            {accepted ? "Strategy Accepted ✓" : "Accept Strategy"}
+          </button>
+        </div>
       </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -291,6 +331,7 @@ function PatientView({
 }
 
 function RecommendationEngine({
+  patient,
   strategies,
   runId,
   generating,
@@ -301,6 +342,7 @@ function RecommendationEngine({
   selectedStrategyId,
   onSelectStrategy,
 }: {
+  patient: PatientVM | null;
   strategies: Record<StrategyId, Strategy> | null;
   runId: string | null;
   generating: boolean;
@@ -320,6 +362,10 @@ function RecommendationEngine({
         acceptedStrategyId={acceptedStrategyId}
         selectedStrategyId={selectedStrategyId}
       />
+
+      <p className="px-1 text-sm font-medium text-neutral-500">
+        {patientLabel(patient)}
+      </p>
 
       <WhitePanel
         title="Strategy Recommendations"
@@ -351,7 +397,9 @@ function RecommendationEngine({
             copy={
               generating
                 ? "Agents 1 and 2 are pattern-matching similar cases and stress-testing each plan. This can take a moment."
-                : "Run the recommendation engine to generate two challenged strategies for this patient."
+                : `Run the recommendation engine to generate two challenged strategies for ${
+                    patient ? patient.caseId : "this patient"
+                  }.`
             }
           />
         ) : (
@@ -567,8 +615,9 @@ function SaveCurrentPlanModal({
               Recorded to the learning database
             </h2>
             <p className="mt-3 text-sm leading-6 text-neutral-600">
-              Agent 3 captured your feedback for {strategy?.name ?? "this plan"} and
-              updated this physician&apos;s preference profile.
+              Agent 3 captured your feedback for{" "}
+              {patient ? `patient ${patient.caseId}` : "this case"} and updated
+              this physician&apos;s preference profile.
             </p>
             {success.note && (
               <div className="mt-5 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3">
