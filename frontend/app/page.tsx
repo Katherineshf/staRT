@@ -82,12 +82,6 @@ export default function Home() {
   const selectedStrategy = selectedStrategyId
     ? strategies[selectedStrategyId]
     : null;
-  const acceptedStrategy = acceptedStrategyId
-    ? strategies[acceptedStrategyId]
-    : null;
-  const latestSignal = acceptedStrategy
-    ? `Dr. Smith accepted ${acceptedStrategy.name} for a pituitary adenoma case. This preference will inform future recommendations.`
-    : "No accepted strategy has been stored for the current case.";
 
   function selectStrategy(id: StrategyId) {
     setSelectedStrategyId(id);
@@ -102,7 +96,7 @@ export default function Home() {
     if (!selectedStrategy) return;
 
     setAcceptedStrategyId(selectedStrategy.id);
-    setActivePage("patient");
+    setActivePage("engine");
   }
 
   return (
@@ -112,17 +106,14 @@ export default function Home() {
 
         <div className="mt-7">
           {activePage === "patient" && (
-            <PatientView
-              latestSignal={latestSignal}
-              selectedStrategy={selectedStrategy}
-              onNavigate={setActivePage}
-              onPreviewAlternative={previewAlternative}
-              onAcceptStrategy={acceptStrategy}
-            />
+            <PatientView selectedStrategy={selectedStrategy} />
           )}
           {activePage === "engine" && (
             <RecommendationEngine
+              acceptedStrategyId={acceptedStrategyId}
               selectedStrategyId={selectedStrategyId}
+              onAcceptStrategy={acceptStrategy}
+              onPreviewAlternative={previewAlternative}
               onSelectStrategy={selectStrategy}
             />
           )}
@@ -183,17 +174,9 @@ function TopBar({
 }
 
 function PatientView({
-  latestSignal,
   selectedStrategy,
-  onNavigate,
-  onPreviewAlternative,
-  onAcceptStrategy,
 }: {
-  latestSignal: string;
   selectedStrategy: Strategy | null;
-  onNavigate: (page: Page) => void;
-  onPreviewAlternative: () => void;
-  onAcceptStrategy: () => void;
 }) {
   return (
     <div className="space-y-7">
@@ -206,68 +189,35 @@ function PatientView({
       </BlackPanel>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <MetricCard
-          label="Target Coverage"
-          status={selectedStrategy ? "Projected Outcome" : "No strategy selected"}
-          value={selectedStrategy?.metrics.coverage ?? "--"}
-          trend="Coverage projection changes with Strategy A or B."
-          tone="green"
-        />
-        <MetricCard
-          label="Optic Chiasm Max Dose"
-          status="Synthetic Preview"
-          value={selectedStrategy?.metrics.chiasmDose ?? "--"}
-          trend="OAR constraint remains physician-reviewed."
-          tone="orange"
-        />
-        <MetricCard
-          label="Conformity Index"
-          status="Decision Support Only"
-          value={selectedStrategy?.metrics.ci ?? "--"}
-          trend="Lower values indicate tighter synthetic conformity."
-          tone="orange"
-        />
-        <MetricCard
-          label="Tumor Control Projection"
-          status="Projected Outcome"
-          value={selectedStrategy?.metrics.projectedControl ?? "--"}
-          trend="Not a generated treatment plan."
-          tone="green"
-        />
+        <GeneralPlanCard strategy={selectedStrategy} />
+        <DvhPreviewCard strategy={selectedStrategy} />
+        <TumorInputOutputCard strategy={selectedStrategy} />
+        <OarInputOutputCard strategy={selectedStrategy} />
       </div>
-
-      <BlackPanel
-        title="Projected Outcome"
-        kicker={
-          selectedStrategy ? `Strategy ${selectedStrategy.id}` : "No strategy selected"
-        }
-        action={<DarkBadge>Decision Support Only</DarkBadge>}
-      >
-        <OutcomeGauge strategy={selectedStrategy} />
-      </BlackPanel>
-
-      <WhitePanel title="Case Workflow" actionLabel="Create Plan">
-        <WorkflowSteps
-          latestSignal={latestSignal}
-          selectedStrategy={selectedStrategy}
-          onNavigate={onNavigate}
-          onPreviewAlternative={onPreviewAlternative}
-          onAcceptStrategy={onAcceptStrategy}
-        />
-      </WhitePanel>
     </div>
   );
 }
 
 function RecommendationEngine({
+  acceptedStrategyId,
   selectedStrategyId,
+  onAcceptStrategy,
+  onPreviewAlternative,
   onSelectStrategy,
 }: {
+  acceptedStrategyId: StrategyId | null;
   selectedStrategyId: StrategyId | null;
+  onAcceptStrategy: () => void;
+  onPreviewAlternative: () => void;
   onSelectStrategy: (id: StrategyId) => void;
 }) {
   return (
     <div className="space-y-7">
+      <WorkflowProgress
+        acceptedStrategyId={acceptedStrategyId}
+        selectedStrategyId={selectedStrategyId}
+      />
+
       <WhitePanel title="Strategy Recommendations" actionLabel="Clinician choice">
         <div className="grid gap-5 lg:grid-cols-2">
           {Object.values(strategies).map((strategy) => (
@@ -279,33 +229,30 @@ function RecommendationEngine({
             />
           ))}
         </div>
+        <div className="mt-5 flex flex-wrap gap-2">
+          <button
+            onClick={onPreviewAlternative}
+            className="rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold"
+          >
+            Compare Outcomes
+          </button>
+          <button
+            onClick={onAcceptStrategy}
+            disabled={!selectedStrategyId}
+            className="rounded-full bg-[#46d47b] px-4 py-2 text-sm font-semibold text-black disabled:bg-neutral-200 disabled:text-neutral-400"
+          >
+            Generate Plan
+          </button>
+        </div>
       </WhitePanel>
 
-      <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-        <BlackPanel
-          title="Agent Activity Log"
-          kicker="Decision Support Only"
-          action={<DarkBadge>Synthetic Preview</DarkBadge>}
-        >
-          <ActivityLog />
-        </BlackPanel>
-
-        <WhitePanel title="Historical Similar Cases" actionLabel="Synthetic">
-          <div className="grid gap-3 sm:grid-cols-3">
-            {["SYN-1412", "SYN-1327", "SYN-1294"].map((caseId, index) => (
-              <div key={caseId} className="rounded-2xl bg-neutral-50 p-4">
-                <p className="font-mono text-sm font-semibold">{caseId}</p>
-                <p className="mt-2 text-2xl font-semibold">
-                  {index === 1 ? "92%" : "88%"}
-                </p>
-                <p className="mt-2 text-sm leading-5 text-neutral-500">
-                  Similar synthetic pituitary planning preference.
-                </p>
-              </div>
-            ))}
-          </div>
-        </WhitePanel>
-      </div>
+      <BlackPanel
+        title="Agent Activity Log"
+        kicker="Decision Support Only"
+        action={<DarkBadge>Synthetic Preview</DarkBadge>}
+      >
+        <ActivityLog />
+      </BlackPanel>
     </div>
   );
 }
@@ -383,96 +330,165 @@ function StrategyCard({
   );
 }
 
-function WorkflowSteps({
-  latestSignal,
-  selectedStrategy,
-  onNavigate,
-  onPreviewAlternative,
-  onAcceptStrategy,
+function WorkflowProgress({
+  acceptedStrategyId,
+  selectedStrategyId,
 }: {
-  latestSignal: string;
-  selectedStrategy: Strategy | null;
-  onNavigate: (page: Page) => void;
-  onPreviewAlternative: () => void;
-  onAcceptStrategy: () => void;
+  acceptedStrategyId: StrategyId | null;
+  selectedStrategyId: StrategyId | null;
 }) {
-  const rows = [
-    ["New Patient", "Pituitary adenoma case entered system"],
-    [
-      "Recommendation",
-      selectedStrategy
-        ? `${selectedStrategy.name} selected`
-        : "No strategy selected.",
-    ],
-    ["Compare", "Preview Alternative Strategy"],
-    ["Accept", latestSignal],
+  const steps = [
+    { label: "Verify Inputs", complete: true },
+    { label: "Generate Recommendations", complete: true },
+    { label: "Compare Outcomes", complete: Boolean(selectedStrategyId) },
+    { label: "Select Strategy", complete: Boolean(selectedStrategyId) },
+    { label: "Generate Plan", complete: Boolean(acceptedStrategyId) },
+    { label: "Save Plan", complete: Boolean(acceptedStrategyId) },
   ];
 
   return (
-    <div className="space-y-5">
-      {rows.map(([title, body], index) => (
-        <div key={title} className="grid grid-cols-[34px_1fr] gap-3">
-          <div className="flex flex-col items-center">
-            <span className="grid size-8 place-items-center rounded-xl border border-neutral-200 bg-white text-sm font-semibold">
-              {index + 1}
-            </span>
-            {index < rows.length - 1 && (
-              <span className="mt-2 h-full min-h-8 w-px bg-neutral-200" />
-            )}
-          </div>
-          <div className="pb-2">
-            <p className="font-semibold">{title}</p>
-            <p className="mt-1 text-sm leading-5 text-neutral-500">{body}</p>
-          </div>
+    <section className="rounded-[22px] bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-neutral-500">
+            Recommendation Engine
+          </p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-tight">
+            Case Workflow
+          </h2>
         </div>
-      ))}
-
-      <div className="flex flex-wrap gap-2 pt-2">
-        <button
-          onClick={() => onNavigate("engine")}
-          className="rounded-full bg-black px-4 py-2 text-sm font-semibold text-white"
-        >
-          Recommendation Engine
-        </button>
-        <button
-          onClick={onPreviewAlternative}
-          className="rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold"
-        >
-          Preview Alternative Strategy
-        </button>
-        <button
-          onClick={onAcceptStrategy}
-          disabled={!selectedStrategy}
-          className="rounded-full bg-[#46d47b] px-4 py-2 text-sm font-semibold text-black disabled:bg-neutral-200 disabled:text-neutral-400"
-        >
-          Accept Strategy
-        </button>
+        <span className="rounded-full border border-neutral-200 px-3 py-1 text-xs font-semibold text-neutral-500">
+          Decision Support Only
+        </span>
       </div>
-    </div>
+      <div className="mt-5 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+        {steps.map((step) => (
+          <div
+            key={step.label}
+            className={`rounded-2xl px-4 py-3 text-sm font-semibold ${
+              step.complete
+                ? "bg-[#e6f7ec] text-[#167a42]"
+                : "bg-neutral-100 text-neutral-500"
+            }`}
+          >
+            <span className="mr-2">{step.complete ? "✓" : "○"}</span>
+            {step.label}
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
 function ActivityLog() {
   const items = [
-    "Case intake normalized against synthetic pituitary adenoma cohort.",
-    "Optic chiasm proximity elevated OAR-sparing recommendation weight.",
-    "Strategy A and Strategy B synthesized as planning strategy previews.",
-    "Projected outcome metrics prepared for physician comparison.",
+    {
+      agent: "Agent 1",
+      title: "Case Intake Complete",
+      detail: "Loaded pituitary adenoma case",
+      duration: "120 ms",
+      tone: "blue",
+      status: "Complete",
+    },
+    {
+      agent: "Agent 1",
+      title: "Similarity Search",
+      detail: "18 matching historical plans found",
+      duration: "240 ms",
+      tone: "blue",
+      status: "Complete",
+    },
+    {
+      agent: "Agent 2",
+      title: "Generate Strategy A",
+      detail: "4-arc non-coplanar approach",
+      duration: "310 ms",
+      tone: "purple",
+      status: "Complete",
+    },
+    {
+      agent: "Agent 2",
+      title: "Generate Strategy B",
+      detail: "3-arc conformity-focused approach",
+      duration: "280 ms",
+      tone: "purple",
+      status: "Complete",
+    },
+    {
+      agent: "Agent 2",
+      title: "Outcome Projection",
+      detail: "Synthetic DVH generated",
+      duration: "540 ms",
+      tone: "purple",
+      status: "Complete",
+    },
   ];
 
   return (
-    <div className="space-y-4">
-      {items.map((item, index) => (
-        <div key={item} className="grid grid-cols-[36px_1fr] gap-3">
-          <span className="grid size-9 place-items-center rounded-xl bg-white/10 text-sm font-semibold text-white">
-            {index + 1}
-          </span>
-          <p className="rounded-2xl bg-white/10 p-4 text-sm leading-6 text-white/70">
-            {item}
-          </p>
+    <div className="space-y-3">
+      {items.map((item) => (
+        <div
+          key={item.title}
+          className="rounded-2xl border border-white/10 bg-white/10 p-4"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-3">
+              <AgentBadge tone={item.tone}>{item.agent}</AgentBadge>
+              <div>
+                <p className="font-semibold text-white">{item.title}</p>
+                <p className="mt-1 text-sm leading-5 text-white/60">
+                  {item.detail}
+                </p>
+              </div>
+            </div>
+            <StatusBadge status={item.status} duration={item.duration} />
+          </div>
         </div>
       ))}
     </div>
+  );
+}
+
+function AgentBadge({
+  tone,
+  children,
+}: {
+  tone: string;
+  children: React.ReactNode;
+}) {
+  const classes =
+    tone === "blue"
+      ? "bg-[#dbeafe] text-[#1d4ed8]"
+      : "bg-[#ede9fe] text-[#6d28d9]";
+
+  return (
+    <span
+      className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${classes}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function StatusBadge({
+  status,
+  duration,
+}: {
+  status: string;
+  duration: string;
+}) {
+  const complete = status === "Complete";
+
+  return (
+    <span
+      className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${
+        complete
+          ? "bg-[#dcfce7] text-[#15803d]"
+          : "bg-[#fef3c7] text-[#a16207]"
+      }`}
+    >
+      {complete ? "✓" : "•"} {duration}
+    </span>
   );
 }
 
@@ -513,134 +529,261 @@ function MriViewer() {
   );
 }
 
-function OutcomeGauge({ strategy }: { strategy: Strategy | null }) {
-  const score = strategy?.id === "B" ? 82 : strategy?.id === "A" ? 74 : 0;
+function GeneralPlanCard({ strategy }: { strategy: Strategy | null }) {
+  const rows: [string, string][] = strategy
+    ? [
+        ["Selected strategy", strategy.name],
+        ["Algorithm", "Monte Carlo"],
+        ["Number of arcs", strategy.id === "A" ? "4" : "3"],
+        ["Arc type", "Non-coplanar arcs"],
+        ["PTV margin", "1 mm"],
+        ["Planning priority", strategy.intent],
+      ]
+    : [
+        ["Tumor type", "Pituitary adenoma"],
+        ["Prescription dose", "12 Gy"],
+        ["Number of fractions", "1"],
+        ["Target volume", "1.8 cc"],
+        ["Physician", "Dr. Smith"],
+      ];
 
   return (
-    <div className="space-y-5">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <RiskTile
-          label="OAR Risk"
-          value={strategy?.id === "B" ? "30%" : strategy?.id === "A" ? "12%" : "--"}
-          copy="Optic pathway monitoring advised."
-        />
-        <RiskTile
-          label="Coverage Confidence"
-          value={strategy?.metrics.coverage ?? "--"}
-          copy="Synthetic preview only."
-        />
-      </div>
-      <div className="relative mx-auto h-44 max-w-[420px] overflow-hidden">
-        <div className="absolute inset-x-0 bottom-[-160px] mx-auto h-80 w-80 rounded-full border-[18px] border-white/10" />
-        {Array.from({ length: 38 }).map((_, index) => {
-          const rotation = -72 + index * 3.9;
-          const lit = index < Math.round((score / 100) * 38);
-          return (
-            <span
-              key={index}
-              className={`absolute bottom-0 left-1/2 h-24 w-1.5 origin-bottom rounded-full ${
-                lit
-                  ? "bg-gradient-to-t from-[#e15a3b] via-[#f3e968] to-[#7cf0a0]"
-                  : "bg-white/10"
-              }`}
-              style={{ transform: `rotate(${rotation}deg) translateY(-54px)` }}
-            />
-          );
-        })}
-        <div className="absolute inset-x-0 bottom-0 text-center">
-          <p className="text-4xl font-semibold text-white">
-            {strategy ? score : "--"}
-          </p>
-          <p className="mt-2 text-sm text-white/55">Projected Outcome</p>
+    <ClinicalCard
+      title="General Plan / Patient Information"
+      badge={strategy ? "Selected Strategy" : "Baseline Case"}
+      tone="green"
+    >
+      <InfoRows rows={rows} />
+    </ClinicalCard>
+  );
+}
+
+function DvhPreviewCard({ strategy }: { strategy: Strategy | null }) {
+  return (
+    <ClinicalCard title="DVH Preview" badge="Synthetic Preview" tone="orange">
+      {strategy ? (
+        <div className="space-y-4">
+          <SyntheticDvhGraph strategy={strategy} />
+          <div className="flex flex-wrap gap-3 text-xs font-semibold text-neutral-600">
+            <Legend color="#111111" label="PTV" />
+            <Legend color="#46d47b" label="Brainstem" />
+            <Legend color="#f08a36" label="Optic Chiasm" />
+            <Legend color="#6b7cff" label="Optic Nerve" />
+          </div>
         </div>
+      ) : (
+        <EmptyState
+          title="No strategy selected"
+          copy="Select a recommendation to generate synthetic projected DVH"
+        />
+      )}
+    </ClinicalCard>
+  );
+}
+
+function TumorInputOutputCard({ strategy }: { strategy: Strategy | null }) {
+  const outputRows: [string, string][] = strategy
+    ? [
+        ["Projected coverage", strategy.metrics.coverage],
+        ["CI", strategy.metrics.ci],
+        ["GI", strategy.metrics.gi],
+        ["V12", strategy.id === "A" ? "3.4 cc" : "4.1 cc"],
+        [
+          "Target priority",
+          strategy.id === "A" ? "Balanced coverage" : "High target coverage",
+        ],
+      ]
+    : [["Output", "Pending projected coverage"]];
+
+  return (
+    <ClinicalCard title="Tumor Input / Output" badge="Decision Support Only">
+      <SectionLabel>Inputs</SectionLabel>
+      <InfoRows
+        rows={[
+          ["Tumor type", "Pituitary adenoma"],
+          ["Target volume", "1.8 cc"],
+          ["Prescription", "12 Gy"],
+          ["Fractions", "1"],
+          ["Shape complexity", "Moderate"],
+        ]}
+      />
+      <SectionLabel className="mt-5">Output</SectionLabel>
+      <InfoRows rows={outputRows} />
+    </ClinicalCard>
+  );
+}
+
+function OarInputOutputCard({ strategy }: { strategy: Strategy | null }) {
+  const outputRows: [string, string][] = strategy
+    ? [
+        ["Predicted Brainstem dose", strategy.metrics.brainstemDose],
+        ["Predicted Optic Chiasm dose", strategy.metrics.chiasmDose],
+        ["Predicted Optic Nerve dose", strategy.metrics.opticNerveDose],
+        [
+          "OAR sparing tradeoff",
+          strategy.id === "A" ? "High sparing, lower coverage" : "Moderate sparing",
+        ],
+      ]
+    : [["Output", "Pending projected OAR dose"]];
+
+  return (
+    <ClinicalCard title="OAR Input / Output" badge="Synthetic Preview" tone="orange">
+      <SectionLabel>Inputs</SectionLabel>
+      <InfoRows
+        rows={[
+          ["OAR name", "Optic chiasm, optic nerve, brainstem"],
+          ["Distance to tumor", "1.6 mm minimum"],
+          ["OAR margin", "1 mm review band"],
+          ["Constraint priority", "High optic pathway priority"],
+        ]}
+      />
+      <SectionLabel className="mt-5">Output</SectionLabel>
+      <InfoRows rows={outputRows} />
+    </ClinicalCard>
+  );
+}
+
+function ClinicalCard({
+  title,
+  badge,
+  tone = "neutral",
+  children,
+}: {
+  title: string;
+  badge: string;
+  tone?: "green" | "orange" | "neutral";
+  children: React.ReactNode;
+}) {
+  const badgeClass =
+    tone === "green"
+      ? "bg-[#e6f7ec] text-[#167a42]"
+      : tone === "orange"
+        ? "bg-[#fff0db] text-[#99611c]"
+        : "bg-neutral-100 text-neutral-600";
+
+  return (
+    <section className="min-h-[330px] rounded-[22px] bg-white p-5 shadow-sm">
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <h2 className="text-xl font-semibold tracking-tight text-neutral-800">
+          {title}
+        </h2>
+        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badgeClass}`}>
+          {badge}
+        </span>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function InfoRows({ rows }: { rows: [string, string][] }) {
+  return (
+    <div className="space-y-3">
+      {rows.map(([label, value]) => (
+        <div
+          key={label}
+          className="flex items-start justify-between gap-4 rounded-2xl bg-neutral-50 px-4 py-3"
+        >
+          <p className="text-sm font-medium text-neutral-500">{label}</p>
+          <p className="max-w-[58%] text-right text-sm font-semibold text-neutral-900">
+            {value}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SectionLabel({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <p
+      className={`mb-3 text-xs font-semibold uppercase text-neutral-400 ${className}`}
+    >
+      {children}
+    </p>
+  );
+}
+
+function EmptyState({ title, copy }: { title: string; copy: string }) {
+  return (
+    <div className="grid min-h-[230px] place-items-center rounded-2xl border border-dashed border-neutral-200 bg-neutral-50 p-6 text-center">
+      <div>
+        <p className="text-lg font-semibold">{title}</p>
+        <p className="mt-2 max-w-sm text-sm leading-6 text-neutral-500">{copy}</p>
       </div>
     </div>
   );
 }
 
-function MetricCard({
-  label,
-  value,
-  status,
-  trend,
-  tone,
-}: {
-  label: string;
-  value: string;
-  status: string;
-  trend: string;
-  tone: "green" | "orange";
-}) {
-  return (
-    <section className="rounded-[22px] bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-neutral-500">{label}</p>
-          <p className="mt-3 text-3xl font-semibold tracking-tight">{value}</p>
-        </div>
-        <span
-          className={`rounded-full px-3 py-1 text-xs font-medium ${
-            tone === "green"
-              ? "bg-[#e6f7ec] text-[#167a42]"
-              : "bg-[#fff0db] text-[#99611c]"
-          }`}
-        >
-          {status}
-        </span>
-      </div>
-      <p className="mt-4 text-sm leading-5 text-neutral-500">{trend}</p>
-      <MiniTrend tone={tone} muted={value === "--"} />
-    </section>
-  );
-}
-
-function MiniTrend({
-  tone,
-  muted,
-}: {
-  tone: "green" | "orange";
-  muted: boolean;
-}) {
-  const stroke = tone === "green" ? "#46d47b" : "#f08a36";
+function SyntheticDvhGraph({ strategy }: { strategy: Strategy }) {
+  const boosted = strategy.id === "B";
 
   return (
-    <div className="mt-4 rounded-2xl bg-neutral-50 p-3">
-      <svg viewBox="0 0 320 72" role="img" aria-label="Synthetic trend preview">
-        <path d="M8 56 H312" stroke="#e5e5e5" />
+    <div className="rounded-2xl bg-neutral-50 p-4">
+      <svg viewBox="0 0 520 260" role="img" aria-label="Synthetic DVH preview">
+        <path d="M44 28 V220 H492" fill="none" stroke="#d6d6d6" />
+        {[70, 115, 160, 205].map((y) => (
+          <path key={y} d={`M44 ${y} H492`} stroke="#e8e8e8" />
+        ))}
         <path
           d={
-            muted
-              ? "M8 42 C56 42, 96 42, 144 42 C198 42, 250 42, 312 42"
-              : "M8 46 C52 34, 92 38, 132 29 C176 20, 214 34, 254 24 C282 18, 298 23, 312 18"
+            boosted
+              ? "M44 210 C92 86, 158 50, 242 48 C322 45, 400 52, 492 62"
+              : "M44 212 C98 102, 162 66, 244 62 C324 58, 402 72, 492 86"
           }
           fill="none"
-          stroke={muted ? "#d4d4d4" : stroke}
+          stroke="#111111"
+          strokeWidth="5"
+          strokeLinecap="round"
+        />
+        <path
+          d="M44 222 C118 205, 198 188, 286 164 C368 142, 430 130, 492 122"
+          fill="none"
+          stroke="#46d47b"
           strokeWidth="4"
           strokeLinecap="round"
         />
+        <path
+          d={
+            boosted
+              ? "M44 218 C128 190, 206 160, 292 126 C370 96, 430 82, 492 72"
+              : "M44 222 C132 208, 212 186, 300 154 C382 124, 438 110, 492 102"
+          }
+          fill="none"
+          stroke="#f08a36"
+          strokeWidth="4"
+          strokeLinecap="round"
+        />
+        <path
+          d="M44 224 C128 214, 216 200, 306 178 C384 160, 444 148, 492 140"
+          fill="none"
+          stroke="#6b7cff"
+          strokeWidth="4"
+          strokeLinecap="round"
+        />
+        <text x="52" y="24" fill="#737373" fontSize="13" fontWeight="600">
+          Volume
+        </text>
+        <text x="454" y="244" fill="#737373" fontSize="13" fontWeight="600">
+          Dose
+        </text>
       </svg>
     </div>
   );
 }
 
-function RiskTile({
-  label,
-  value,
-  copy,
-}: {
-  label: string;
-  value: string;
-  copy: string;
-}) {
+function Legend({ color, label }: { color: string; label: string }) {
   return (
-    <div className="rounded-[18px] bg-white/12 p-4">
-      <p className="text-sm font-semibold text-white">{label}</p>
-      <p className="mt-2 text-xs leading-5 text-white/55">{copy}</p>
-      <p className="mt-3 text-3xl font-semibold text-white">{value}</p>
-      <div className="mt-2 h-2 overflow-hidden rounded-full bg-gradient-to-r from-[#5ee58c] via-[#f4ec62] to-[#e75539]">
-        <span className="block h-full w-1/3 rounded-full border-2 border-white bg-transparent" />
-      </div>
-    </div>
+    <span className="flex items-center gap-2">
+      <span className="size-2.5 rounded-full" style={{ backgroundColor: color }} />
+      {label}
+    </span>
   );
 }
 
