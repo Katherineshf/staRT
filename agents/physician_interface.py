@@ -28,8 +28,8 @@ SYSTEM_PROMPT = (
 USER_TEMPLATE = (
     "Current preference profile:\n{prefs}\n\n"
     "Chosen plan:\n{chosen}\n\n"
-    "What they LIKED: {liked}\n"
-    "What they DISLIKED: {disliked}\n\n"
+    "Physician's reasoning for choosing this plan: {reasoning}\n"
+    "Concerns or what they would change: {concern}\n\n"
     "Return JSON of the exact form (use null when unsure):\n"
     '{{"favors_lower_mu": bool|null, "prioritizes_oar_sparing": bool|null, '
     '"favors_target_coverage": bool|null, "preferred_technique": str|null, '
@@ -47,8 +47,8 @@ async def process_physician_feedback(
     physician_id: str,
     run_id: str,
     chosen_plan_id: str,
-    liked: str,
-    disliked: str,
+    reasoning: str,
+    concern: str | None,
     top_two: list[ChallengedPlan],
     current_prefs: PhysicianPreferences,
 ) -> tuple[PhysicianPreferences, PhysicianChoice]:
@@ -57,8 +57,8 @@ async def process_physician_feedback(
     user = USER_TEMPLATE.format(
         prefs=current_prefs.model_dump_json(),
         chosen=chosen.model_dump_json() if chosen else f"(id {chosen_plan_id} not in run)",
-        liked=liked or "(none)",
-        disliked=disliked or "(none)",
+        reasoning=reasoning or "(none)",
+        concern=concern or "(none)",
     )
     data = await chat_json(SYSTEM_PROMPT, user, temperature=0.2)
 
@@ -81,7 +81,7 @@ async def process_physician_feedback(
         physician=physician_id,
         run_id=run_id,
         chosen_plan_id=chosen_plan_id,
-        liked=liked,
-        disliked=disliked,
+        reasoning=reasoning,
+        concern=concern,
     )
     return updated, choice

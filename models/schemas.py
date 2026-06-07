@@ -131,8 +131,8 @@ class PhysicianChoice(StrictModel):
     physician: str
     run_id: str
     chosen_plan_id: str
-    liked: str
-    disliked: str
+    reasoning: str
+    concern: str | None = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -184,8 +184,8 @@ class PhysicianFeedbackRequest(StrictModel):
     run_id: str
     physician_id: str
     chosen_plan_id: str
-    liked: str
-    disliked: str
+    reasoning: str
+    concern: str | None = None
 
 
 class PhysicianFeedbackResponse(StrictModel):

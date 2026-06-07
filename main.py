@@ -225,8 +225,8 @@ async def submit_feedback(request: PhysicianFeedbackRequest):
             request.physician_id,
             request.run_id,
             request.chosen_plan_id,
-            request.liked,
-            request.disliked,
+            request.reasoning,
+            request.concern,
             state.top_two,
             prefs,
         )
@@ -242,7 +242,7 @@ async def submit_feedback(request: PhysicianFeedbackRequest):
         add_feedback(
             state.metadata.get("weave_generate_call_id"),
             reaction="👍",
-            note=f"chose {request.chosen_plan_id} | liked: {request.liked} | disliked: {request.disliked}",
+            note=f"chose {request.chosen_plan_id} | reasoning: {request.reasoning} | concern: {request.concern}",
         )
         return PhysicianFeedbackResponse(physician=request.physician_id, updated_preferences=updated)
     except HTTPException:
