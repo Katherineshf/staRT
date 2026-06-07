@@ -1,71 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+
+import { ApiError, generatePlans, getPatient, submitFeedback } from "@/lib/api";
+import { DASH, mapPatient, mapTopTwo } from "@/lib/mapPlan";
+import type { PatientView as PatientVM, Strategy, StrategyId } from "@/lib/mapPlan";
 
 type Page = "patient" | "engine";
-type StrategyId = "A" | "B";
 
-type Strategy = {
-  id: StrategyId;
-  name: string;
-  intent: string;
-  details: string[];
-  metrics: {
-    coverage: string;
-    ci: string;
-    gi: string;
-    chiasmDose: string;
-    brainstemDose: string;
-    opticNerveDose: string;
-    projectedControl: string;
-    projectedToxicity: string;
-  };
-};
-
-const strategies: Record<StrategyId, Strategy> = {
-  A: {
-    id: "A",
-    name: "OAR-Sparing Strategy",
-    intent: "High optic chiasm priority",
-    details: [
-      "Monte Carlo",
-      "4 non-coplanar arcs",
-      "1 mm PTV margin",
-      "High optic chiasm priority",
-    ],
-    metrics: {
-      coverage: "97.8%",
-      ci: "1.18",
-      gi: "3.6",
-      chiasmDose: "5.2 Gy",
-      brainstemDose: "3.9 Gy",
-      opticNerveDose: "4.8 Gy",
-      projectedControl: "94.6%",
-      projectedToxicity: "Low",
-    },
-  },
-  B: {
-    id: "B",
-    name: "Coverage-Focused Strategy",
-    intent: "High target coverage priority",
-    details: [
-      "Monte Carlo",
-      "3 non-coplanar arcs",
-      "1 mm PTV margin",
-      "High target coverage priority",
-    ],
-    metrics: {
-      coverage: "99.1%",
-      ci: "1.08",
-      gi: "3.2",
-      chiasmDose: "6.8 Gy",
-      brainstemDose: "4.4 Gy",
-      opticNerveDose: "5.6 Gy",
-      projectedControl: "96.1%",
-      projectedToxicity: "Moderate-low",
-    },
-  },
-};
+// Wiring stubs — patient/physician pickers and the liked/disliked free-text fields
+// are a deferred UI round, so for now we target a fixed demo patient/physician and
+// send empty feedback text (see task notes).
+const PATIENT_ID = "PAT-001";
+const PHYSICIAN_ID = "PHY-001";
 
 const pageLabels: Record<Page, string> = {
   patient: "Patient View",
@@ -74,15 +21,65 @@ const pageLabels: Record<Page, string> = {
 
 export default function Home() {
   const [activePage, setActivePage] = useState<Page>("patient");
+  const [patient, setPatient] = useState<PatientVM | null>(null);
+
+  const [strategies, setStrategies] =
+    useState<Record<StrategyId, Strategy> | null>(null);
+  const [runId, setRunId] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
+
   const [selectedStrategyId, setSelectedStrategyId] =
     useState<StrategyId | null>(null);
   const [acceptedStrategyId, setAcceptedStrategyId] =
     useState<StrategyId | null>(null);
   const [savePlanOpen, setSavePlanOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
-  const selectedStrategy = selectedStrategyId
-    ? strategies[selectedStrategyId]
-    : null;
+  const selectedStrategy =
+    strategies && selectedStrategyId ? strategies[selectedStrategyId] : null;
+
+  // Load the (stubbed) patient once so the Patient View shows real case data.
+  useEffect(() => {
+    let cancelled = false;
+    getPatient(PATIENT_ID)
+      .then((p) => {
+        if (!cancelled) setPatient(mapPatient(p));
+      })
+      .catch(() => {
+        /* leave patient null; cards fall back to honest placeholders */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // "Generate Recommendations" — runs Agents 1 + 2 (slow, can fail).
+  const generate = useCallback(async () => {
+    setGenerating(true);
+    setGenerateError(null);
+    try {
+      const res = await generatePlans({
+        patient_id: PATIENT_ID,
+        physician_id: PHYSICIAN_ID,
+      });
+      const mapped = mapTopTwo(res.top_two);
+      if (!mapped) throw new Error("Backend returned fewer than two plans.");
+      setStrategies(mapped);
+      setRunId(res.run_id);
+      setSelectedStrategyId(null);
+      setAcceptedStrategyId(null);
+    } catch (err) {
+      setGenerateError(
+        err instanceof ApiError || err instanceof Error
+          ? err.message
+          : "Failed to generate recommendations.",
+      );
+    } finally {
+      setGenerating(false);
+    }
+  }, []);
 
   function selectStrategy(id: StrategyId) {
     setSelectedStrategyId(id);
@@ -95,15 +92,40 @@ export default function Home() {
 
   function acceptStrategy() {
     if (!selectedStrategy) return;
-
     setAcceptedStrategyId(selectedStrategy.id);
     setActivePage("engine");
   }
 
-  function saveCurrentPlan() {
-    setAcceptedStrategyId(selectedStrategyId ?? "A");
-    setSavePlanOpen(false);
-    setActivePage("engine");
+  // Modal "Save" — records the chosen plan via Agent 3 (POST /pipeline/feedback).
+  // liked/disliked are stubbed empty until the Accept-flow free-text UI is added.
+  async function saveCurrentPlan() {
+    const chosen = selectedStrategy ?? (strategies ? strategies.A : null);
+    if (!chosen || !runId) {
+      setSaveError("Generate recommendations before saving a plan.");
+      return;
+    }
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await submitFeedback({
+        run_id: runId,
+        physician_id: PHYSICIAN_ID,
+        chosen_plan_id: chosen.caseId,
+        liked: "",
+        disliked: "",
+      });
+      setAcceptedStrategyId(chosen.id);
+      setSavePlanOpen(false);
+      setActivePage("engine");
+    } catch (err) {
+      setSaveError(
+        err instanceof ApiError || err instanceof Error
+          ? err.message
+          : "Failed to save the plan.",
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -113,10 +135,15 @@ export default function Home() {
 
         <div className="mt-7">
           {activePage === "patient" && (
-            <PatientView selectedStrategy={selectedStrategy} />
+            <PatientView patient={patient} selectedStrategy={selectedStrategy} />
           )}
           {activePage === "engine" && (
             <RecommendationEngine
+              strategies={strategies}
+              runId={runId}
+              generating={generating}
+              generateError={generateError}
+              onGenerate={generate}
               acceptedStrategyId={acceptedStrategyId}
               selectedStrategyId={selectedStrategyId}
               onAcceptStrategy={acceptStrategy}
@@ -129,7 +156,14 @@ export default function Home() {
       </div>
       {savePlanOpen && (
         <SaveCurrentPlanModal
-          onCancel={() => setSavePlanOpen(false)}
+          strategy={selectedStrategy}
+          patient={patient}
+          saving={saving}
+          error={saveError}
+          onCancel={() => {
+            setSavePlanOpen(false);
+            setSaveError(null);
+          }}
           onSave={saveCurrentPlan}
         />
       )}
@@ -188,31 +222,38 @@ function TopBar({
 }
 
 function PatientView({
+  patient,
   selectedStrategy,
 }: {
+  patient: PatientVM | null;
   selectedStrategy: Strategy | null;
 }) {
   return (
     <div className="space-y-7">
       <BlackPanel
-        title="Pituitary Adenoma Case"
+        title={patient ? `${patient.condition} Case` : "Patient Case"}
         kicker="MRI Viewer"
-        action={<DarkBadge>Final treatment planning remains manual</DarkBadge>}
+        action={<DarkBadge>Illustrative — not this patient&apos;s scan</DarkBadge>}
       >
         <MriViewer />
       </BlackPanel>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <GeneralPlanCard strategy={selectedStrategy} />
+        <GeneralPlanCard patient={patient} strategy={selectedStrategy} />
         <DvhPreviewCard strategy={selectedStrategy} />
-        <TumorInputOutputCard strategy={selectedStrategy} />
-        <OarInputOutputCard strategy={selectedStrategy} />
+        <TumorInputOutputCard patient={patient} strategy={selectedStrategy} />
+        <OarInputOutputCard patient={patient} strategy={selectedStrategy} />
       </div>
     </div>
   );
 }
 
 function RecommendationEngine({
+  strategies,
+  runId,
+  generating,
+  generateError,
+  onGenerate,
   acceptedStrategyId,
   selectedStrategyId,
   onAcceptStrategy,
@@ -220,6 +261,11 @@ function RecommendationEngine({
   onUseCurrentPlan,
   onSelectStrategy,
 }: {
+  strategies: Record<StrategyId, Strategy> | null;
+  runId: string | null;
+  generating: boolean;
+  generateError: string | null;
+  onGenerate: () => void;
   acceptedStrategyId: StrategyId | null;
   selectedStrategyId: StrategyId | null;
   onAcceptStrategy: () => void;
@@ -227,53 +273,92 @@ function RecommendationEngine({
   onUseCurrentPlan: () => void;
   onSelectStrategy: (id: StrategyId) => void;
 }) {
+  const list = strategies ? Object.values(strategies) : [];
+
   return (
     <div className="space-y-7">
       <WorkflowProgress
+        hasStrategies={Boolean(strategies)}
         acceptedStrategyId={acceptedStrategyId}
         selectedStrategyId={selectedStrategyId}
       />
 
-      <WhitePanel title="Strategy Recommendations" actionLabel="Clinician choice">
-        <div className="grid gap-5 lg:grid-cols-2">
-          {Object.values(strategies).map((strategy) => (
-            <StrategyCard
-              key={strategy.id}
-              selected={selectedStrategyId === strategy.id}
-              strategy={strategy}
-              onSelect={() => onSelectStrategy(strategy.id)}
-            />
-          ))}
-        </div>
-        <div className="mt-5 flex flex-wrap gap-2">
+      <WhitePanel
+        title="Strategy Recommendations"
+        action={
           <button
-            onClick={onUseCurrentPlan}
-            className="rounded-full bg-black px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral-800"
+            onClick={onGenerate}
+            disabled={generating}
+            className="rounded-full bg-black px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:bg-neutral-300 disabled:text-neutral-500"
           >
-            Use Current Plan
+            {generating
+              ? "Generating…"
+              : strategies
+                ? "Regenerate"
+                : "Generate Recommendations"}
           </button>
-          <button
-            onClick={onPreviewAlternative}
-            className="rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold"
-          >
-            Compare Outcomes
-          </button>
-          <button
-            onClick={onAcceptStrategy}
-            disabled={!selectedStrategyId}
-            className="rounded-full bg-[#46d47b] px-4 py-2 text-sm font-semibold text-black disabled:bg-neutral-200 disabled:text-neutral-400"
-          >
-            Generate Plan
-          </button>
-        </div>
+        }
+      >
+        {generateError && (
+          <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            {generateError}
+          </div>
+        )}
+
+        {list.length === 0 ? (
+          <EmptyState
+            title={
+              generating ? "Generating recommendations…" : "No recommendations yet"
+            }
+            copy={
+              generating
+                ? "Agents 1 and 2 are pattern-matching similar cases and stress-testing each plan. This can take a moment."
+                : "Run the recommendation engine to generate two challenged strategies for this patient."
+            }
+          />
+        ) : (
+          <>
+            <div className="grid gap-5 lg:grid-cols-2">
+              {list.map((strategy) => (
+                <StrategyCard
+                  key={strategy.id}
+                  selected={selectedStrategyId === strategy.id}
+                  strategy={strategy}
+                  onSelect={() => onSelectStrategy(strategy.id)}
+                />
+              ))}
+            </div>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                onClick={onUseCurrentPlan}
+                className="rounded-full bg-black px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral-800"
+              >
+                Use Current Plan
+              </button>
+              <button
+                onClick={onPreviewAlternative}
+                className="rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold"
+              >
+                Compare Outcomes
+              </button>
+              <button
+                onClick={onAcceptStrategy}
+                disabled={!selectedStrategyId}
+                className="rounded-full bg-[#46d47b] px-4 py-2 text-sm font-semibold text-black disabled:bg-neutral-200 disabled:text-neutral-400"
+              >
+                Accept Strategy
+              </button>
+            </div>
+          </>
+        )}
       </WhitePanel>
 
       <BlackPanel
         title="Agent Activity Log"
         kicker="Decision Support Only"
-        action={<DarkBadge>Synthetic Preview</DarkBadge>}
+        action={<DarkBadge>Live run data</DarkBadge>}
       >
-        <ActivityLog />
+        <ActivityLog runId={runId} strategies={list} />
       </BlackPanel>
     </div>
   );
@@ -310,7 +395,7 @@ function StrategyCard({
             selected ? "bg-white text-black" : "bg-neutral-100 text-neutral-600"
           }`}
         >
-          Projected Outcome
+          Risk {strategy.riskScore}
         </span>
       </div>
 
@@ -332,8 +417,8 @@ function StrategyCard({
         <SmallStat label="CI" value={strategy.metrics.ci} dark={selected} />
         <SmallStat label="GI" value={strategy.metrics.gi} dark={selected} />
         <SmallStat
-          label="Chiasm Max Dose"
-          value={strategy.metrics.chiasmDose}
+          label="Max OAR Dose"
+          value={strategy.metrics.maxOarDose}
           dark={selected}
         />
       </div>
@@ -353,18 +438,20 @@ function StrategyCard({
 }
 
 function WorkflowProgress({
+  hasStrategies,
   acceptedStrategyId,
   selectedStrategyId,
 }: {
+  hasStrategies: boolean;
   acceptedStrategyId: StrategyId | null;
   selectedStrategyId: StrategyId | null;
 }) {
   const steps = [
     { label: "Verify Inputs", complete: true },
-    { label: "Generate Recommendations", complete: true },
+    { label: "Generate Recommendations", complete: hasStrategies },
     { label: "Compare Outcomes", complete: Boolean(selectedStrategyId) },
     { label: "Select Strategy", complete: Boolean(selectedStrategyId) },
-    { label: "Generate Plan", complete: Boolean(acceptedStrategyId) },
+    { label: "Accept Strategy", complete: Boolean(acceptedStrategyId) },
     { label: "Save Plan", complete: Boolean(acceptedStrategyId) },
   ];
 
@@ -403,19 +490,28 @@ function WorkflowProgress({
 }
 
 function SaveCurrentPlanModal({
+  strategy,
+  patient,
+  saving,
+  error,
   onCancel,
   onSave,
 }: {
+  strategy: Strategy | null;
+  patient: PatientVM | null;
+  saving: boolean;
+  error: string | null;
   onCancel: () => void;
   onSave: () => void;
 }) {
-  const summaryRows = [
-    ["Disease Site", "Pituitary Adenoma"],
-    ["Prescription", "25 Gy / 5 fx"],
-    ["Arcs", "4"],
-    ["Algorithm", "Monte Carlo"],
-    ["Target Priority", "High"],
-    ["OAR Priority", "High"],
+  const summaryRows: [string, string][] = [
+    ["Disease Site", patient?.condition ?? DASH],
+    ["Prescription", patient?.prescription ?? DASH],
+    ["Strategy", strategy?.name ?? DASH],
+    ["Algorithm", strategy?.planning.algorithm ?? DASH],
+    ["Arcs", strategy?.planning.arcs ?? DASH],
+    ["Target priority", strategy?.planning.targetPriority ?? DASH],
+    ["OAR priority", strategy?.planning.oarPriority ?? DASH],
   ];
 
   return (
@@ -453,18 +549,26 @@ function SaveCurrentPlanModal({
           </div>
         </div>
 
+        {error && (
+          <p className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            {error}
+          </p>
+        )}
+
         <div className="mt-7 flex justify-end gap-3">
           <button
             onClick={onCancel}
-            className="rounded-full border border-neutral-200 bg-white px-5 py-2 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50"
+            disabled={saving}
+            className="rounded-full border border-neutral-200 bg-white px-5 py-2 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50 disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={onSave}
-            className="rounded-full bg-black px-5 py-2 text-sm font-semibold text-white transition hover:bg-neutral-800"
+            disabled={saving}
+            className="rounded-full bg-black px-5 py-2 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:bg-neutral-400"
           >
-            Save
+            {saving ? "Saving…" : "Save"}
           </button>
         </div>
       </section>
@@ -472,48 +576,36 @@ function SaveCurrentPlanModal({
   );
 }
 
-function ActivityLog() {
+function ActivityLog({
+  runId,
+  strategies,
+}: {
+  runId: string | null;
+  strategies: Strategy[];
+}) {
+  if (!runId || strategies.length === 0) {
+    return (
+      <p className="rounded-2xl border border-white/10 bg-white/10 p-4 text-sm text-white/70">
+        Run the recommendation engine to see live activity from this run.
+      </p>
+    );
+  }
+
   const items = [
     {
       agent: "Agent 1",
-      title: "Case Intake Complete",
-      detail: "Loaded pituitary adenoma case",
-      duration: "120 ms",
+      title: "Candidate plans generated",
+      detail: `Pattern-matched similar cases into ${strategies.length} reviewed strategies`,
       tone: "blue",
-      status: "Complete",
+      meta: `run ${runId.slice(0, 8)}`,
     },
-    {
-      agent: "Agent 1",
-      title: "Similarity Search",
-      detail: "18 matching historical plans found",
-      duration: "240 ms",
-      tone: "blue",
-      status: "Complete",
-    },
-    {
+    ...strategies.map((s) => ({
       agent: "Agent 2",
-      title: "Generate Strategy A",
-      detail: "4-arc non-coplanar approach",
-      duration: "310 ms",
+      title: `Strategy ${s.id} — ${s.name}`,
+      detail: s.challenge,
       tone: "purple",
-      status: "Complete",
-    },
-    {
-      agent: "Agent 2",
-      title: "Generate Strategy B",
-      detail: "3-arc conformity-focused approach",
-      duration: "280 ms",
-      tone: "purple",
-      status: "Complete",
-    },
-    {
-      agent: "Agent 2",
-      title: "Outcome Projection",
-      detail: "Synthetic DVH generated",
-      duration: "540 ms",
-      tone: "purple",
-      status: "Complete",
-    },
+      meta: `risk ${s.riskScore}`,
+    })),
   ];
 
   return (
@@ -533,7 +625,9 @@ function ActivityLog() {
                 </p>
               </div>
             </div>
-            <StatusBadge status={item.status} duration={item.duration} />
+            <span className="shrink-0 rounded-full bg-white/15 px-3 py-1 text-xs font-bold text-white/80">
+              {item.meta}
+            </span>
           </div>
         </div>
       ))}
@@ -558,28 +652,6 @@ function AgentBadge({
       className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${classes}`}
     >
       {children}
-    </span>
-  );
-}
-
-function StatusBadge({
-  status,
-  duration,
-}: {
-  status: string;
-  duration: string;
-}) {
-  const complete = status === "Complete";
-
-  return (
-    <span
-      className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${
-        complete
-          ? "bg-[#dcfce7] text-[#15803d]"
-          : "bg-[#fef3c7] text-[#a16207]"
-      }`}
-    >
-      {complete ? "✓" : "•"} {duration}
     </span>
   );
 }
@@ -621,22 +693,28 @@ function MriViewer() {
   );
 }
 
-function GeneralPlanCard({ strategy }: { strategy: Strategy | null }) {
+function GeneralPlanCard({
+  patient,
+  strategy,
+}: {
+  patient: PatientVM | null;
+  strategy: Strategy | null;
+}) {
   const rows: [string, string][] = strategy
     ? [
         ["Selected strategy", strategy.name],
-        ["Algorithm", "Monte Carlo"],
-        ["Number of arcs", strategy.id === "A" ? "4" : "3"],
-        ["Arc type", "Non-coplanar arcs"],
-        ["PTV margin", "1 mm"],
+        ["Algorithm", strategy.planning.algorithm],
+        ["Number of arcs", strategy.planning.arcs],
+        ["Arc type", strategy.planning.arcType],
+        ["PTV margin", strategy.planning.ptvMargin],
         ["Planning priority", strategy.intent],
       ]
     : [
-        ["Tumor type", "Pituitary adenoma"],
-        ["Prescription dose", "12 Gy"],
-        ["Number of fractions", "1"],
-        ["Target volume", "1.8 cc"],
-        ["Physician", "Dr. Smith"],
+        ["Tumor type", patient?.tumorType ?? DASH],
+        ["Prescription dose", patient?.prescription ?? DASH],
+        ["Target volume", patient?.targetVolume ?? DASH],
+        ["Condition", patient?.condition ?? DASH],
+        ["Physician", patient?.physician ?? DASH],
       ];
 
   return (
@@ -652,83 +730,101 @@ function GeneralPlanCard({ strategy }: { strategy: Strategy | null }) {
 
 function DvhPreviewCard({ strategy }: { strategy: Strategy | null }) {
   return (
-    <ClinicalCard title="DVH Preview" badge="Synthetic Preview" tone="orange">
+    <ClinicalCard
+      title="Plan Rationale & Risk Review"
+      badge="Decision Support Only"
+      tone="orange"
+    >
       {strategy ? (
         <div className="space-y-4">
-          <SyntheticDvhGraph strategy={strategy} />
-          <div className="flex flex-wrap gap-3 text-xs font-semibold text-neutral-600">
-            <Legend color="#111111" label="PTV" />
-            <Legend color="#46d47b" label="Brainstem" />
-            <Legend color="#f08a36" label="Optic Chiasm" />
-            <Legend color="#6b7cff" label="Optic Nerve" />
+          <div>
+            <SectionLabel>Agent 1 — rationale</SectionLabel>
+            <p className="text-sm leading-6 text-neutral-700">
+              {strategy.rationale}
+            </p>
+          </div>
+          <div>
+            <SectionLabel>Agent 2 — challenge</SectionLabel>
+            <p className="text-sm leading-6 text-neutral-700">
+              {strategy.challenge}
+            </p>
+          </div>
+          <div className="flex items-center justify-between rounded-2xl bg-neutral-50 px-4 py-3">
+            <p className="text-sm font-medium text-neutral-500">Risk score</p>
+            <p className="text-sm font-semibold text-neutral-900">
+              {strategy.riskScore}
+            </p>
           </div>
         </div>
       ) : (
         <EmptyState
           title="No strategy selected"
-          copy="Select a recommendation to generate synthetic projected DVH"
+          copy="Select a recommendation to see its rationale and the reviewer's challenge."
         />
       )}
     </ClinicalCard>
   );
 }
 
-function TumorInputOutputCard({ strategy }: { strategy: Strategy | null }) {
+function TumorInputOutputCard({
+  patient,
+  strategy,
+}: {
+  patient: PatientVM | null;
+  strategy: Strategy | null;
+}) {
+  const inputRows: [string, string][] = [
+    ["Tumor type", patient?.tumorType ?? DASH],
+    ["Target volume", patient?.targetVolume ?? DASH],
+    ["Prescription", patient?.prescription ?? DASH],
+  ];
+
   const outputRows: [string, string][] = strategy
     ? [
         ["Projected coverage", strategy.metrics.coverage],
         ["CI", strategy.metrics.ci],
         ["GI", strategy.metrics.gi],
-        ["V12", strategy.id === "A" ? "3.4 cc" : "4.1 cc"],
-        [
-          "Target priority",
-          strategy.id === "A" ? "Balanced coverage" : "High target coverage",
-        ],
+        ["V12", strategy.metrics.v12],
+        ["Target priority", strategy.planning.targetPriority],
       ]
-    : [["Output", "Pending projected coverage"]];
+    : [["Output", "Select a strategy to see projected results"]];
 
   return (
     <ClinicalCard title="Tumor Input / Output" badge="Decision Support Only">
       <SectionLabel>Inputs</SectionLabel>
-      <InfoRows
-        rows={[
-          ["Tumor type", "Pituitary adenoma"],
-          ["Target volume", "1.8 cc"],
-          ["Prescription", "12 Gy"],
-          ["Fractions", "1"],
-          ["Shape complexity", "Moderate"],
-        ]}
-      />
+      <InfoRows rows={inputRows} />
       <SectionLabel className="mt-5">Output</SectionLabel>
       <InfoRows rows={outputRows} />
     </ClinicalCard>
   );
 }
 
-function OarInputOutputCard({ strategy }: { strategy: Strategy | null }) {
-  const outputRows: [string, string][] = strategy
-    ? [
-        ["Predicted Brainstem dose", strategy.metrics.brainstemDose],
-        ["Predicted Optic Chiasm dose", strategy.metrics.chiasmDose],
-        ["Predicted Optic Nerve dose", strategy.metrics.opticNerveDose],
-        [
-          "OAR sparing tradeoff",
-          strategy.id === "A" ? "High sparing, lower coverage" : "Moderate sparing",
-        ],
-      ]
-    : [["Output", "Pending projected OAR dose"]];
+function OarInputOutputCard({
+  patient,
+  strategy,
+}: {
+  patient: PatientVM | null;
+  strategy: Strategy | null;
+}) {
+  const inputRows: [string, string][] =
+    patient && patient.oars.length
+      ? patient.oars.map(
+          (o) => [o.type, `${o.distance} to tumor`] as [string, string],
+        )
+      : [["OARs", "No organs-at-risk recorded for this case"]];
+
+  const outputRows: [string, string][] = !strategy
+    ? [["Output", "Select a strategy to see projected OAR dose"]]
+    : strategy.oarResults.length
+      ? strategy.oarResults.map(
+          (o) => [`${o.type} Dmax`, o.dmax] as [string, string],
+        )
+      : [["Output", "No OAR dose reported for this plan"]];
 
   return (
-    <ClinicalCard title="OAR Input / Output" badge="Synthetic Preview" tone="orange">
+    <ClinicalCard title="OAR Input / Output" badge="Decision Support Only" tone="orange">
       <SectionLabel>Inputs</SectionLabel>
-      <InfoRows
-        rows={[
-          ["OAR name", "Optic chiasm, optic nerve, brainstem"],
-          ["Distance to tumor", "1.6 mm minimum"],
-          ["OAR margin", "1 mm review band"],
-          ["Constraint priority", "High optic pathway priority"],
-        ]}
-      />
+      <InfoRows rows={inputRows} />
       <SectionLabel className="mt-5">Output</SectionLabel>
       <InfoRows rows={outputRows} />
     </ClinicalCard>
@@ -813,72 +909,6 @@ function EmptyState({ title, copy }: { title: string; copy: string }) {
   );
 }
 
-function SyntheticDvhGraph({ strategy }: { strategy: Strategy }) {
-  const boosted = strategy.id === "B";
-
-  return (
-    <div className="rounded-2xl bg-neutral-50 p-4">
-      <svg viewBox="0 0 520 260" role="img" aria-label="Synthetic DVH preview">
-        <path d="M44 28 V220 H492" fill="none" stroke="#d6d6d6" />
-        {[70, 115, 160, 205].map((y) => (
-          <path key={y} d={`M44 ${y} H492`} stroke="#e8e8e8" />
-        ))}
-        <path
-          d={
-            boosted
-              ? "M44 210 C92 86, 158 50, 242 48 C322 45, 400 52, 492 62"
-              : "M44 212 C98 102, 162 66, 244 62 C324 58, 402 72, 492 86"
-          }
-          fill="none"
-          stroke="#111111"
-          strokeWidth="5"
-          strokeLinecap="round"
-        />
-        <path
-          d="M44 222 C118 205, 198 188, 286 164 C368 142, 430 130, 492 122"
-          fill="none"
-          stroke="#46d47b"
-          strokeWidth="4"
-          strokeLinecap="round"
-        />
-        <path
-          d={
-            boosted
-              ? "M44 218 C128 190, 206 160, 292 126 C370 96, 430 82, 492 72"
-              : "M44 222 C132 208, 212 186, 300 154 C382 124, 438 110, 492 102"
-          }
-          fill="none"
-          stroke="#f08a36"
-          strokeWidth="4"
-          strokeLinecap="round"
-        />
-        <path
-          d="M44 224 C128 214, 216 200, 306 178 C384 160, 444 148, 492 140"
-          fill="none"
-          stroke="#6b7cff"
-          strokeWidth="4"
-          strokeLinecap="round"
-        />
-        <text x="52" y="24" fill="#737373" fontSize="13" fontWeight="600">
-          Volume
-        </text>
-        <text x="454" y="244" fill="#737373" fontSize="13" fontWeight="600">
-          Dose
-        </text>
-      </svg>
-    </div>
-  );
-}
-
-function Legend({ color, label }: { color: string; label: string }) {
-  return (
-    <span className="flex items-center gap-2">
-      <span className="size-2.5 rounded-full" style={{ backgroundColor: color }} />
-      {label}
-    </span>
-  );
-}
-
 function BlackPanel({
   title,
   kicker,
@@ -906,20 +936,18 @@ function BlackPanel({
 
 function WhitePanel({
   title,
-  actionLabel,
+  action,
   children,
 }: {
   title: string;
-  actionLabel: string;
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <section className="rounded-[22px] bg-white p-5 shadow-sm">
       <div className="mb-5 flex items-center justify-between gap-4">
         <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
-        <span className="rounded-full border border-neutral-200 px-3 py-1 text-xs font-medium text-neutral-500">
-          {actionLabel}
-        </span>
+        {action}
       </div>
       {children}
     </section>
