@@ -78,6 +78,7 @@ export default function Home() {
     useState<StrategyId | null>(null);
   const [acceptedStrategyId, setAcceptedStrategyId] =
     useState<StrategyId | null>(null);
+  const [savePlanOpen, setSavePlanOpen] = useState(false);
 
   const selectedStrategy = selectedStrategyId
     ? strategies[selectedStrategyId]
@@ -99,6 +100,12 @@ export default function Home() {
     setActivePage("engine");
   }
 
+  function saveCurrentPlan() {
+    setAcceptedStrategyId(selectedStrategyId ?? "A");
+    setSavePlanOpen(false);
+    setActivePage("engine");
+  }
+
   return (
     <main className="min-h-screen bg-[#d9d9d7] px-4 py-6 text-[#111111] sm:px-8 lg:px-12 lg:py-10">
       <div className="mx-auto max-w-[1440px] rounded-[28px] bg-[#f6f6f4] p-5 shadow-[0_22px_70px_rgba(15,23,42,0.14)] sm:p-7">
@@ -114,11 +121,18 @@ export default function Home() {
               selectedStrategyId={selectedStrategyId}
               onAcceptStrategy={acceptStrategy}
               onPreviewAlternative={previewAlternative}
+              onUseCurrentPlan={() => setSavePlanOpen(true)}
               onSelectStrategy={selectStrategy}
             />
           )}
         </div>
       </div>
+      {savePlanOpen && (
+        <SaveCurrentPlanModal
+          onCancel={() => setSavePlanOpen(false)}
+          onSave={saveCurrentPlan}
+        />
+      )}
     </main>
   );
 }
@@ -203,12 +217,14 @@ function RecommendationEngine({
   selectedStrategyId,
   onAcceptStrategy,
   onPreviewAlternative,
+  onUseCurrentPlan,
   onSelectStrategy,
 }: {
   acceptedStrategyId: StrategyId | null;
   selectedStrategyId: StrategyId | null;
   onAcceptStrategy: () => void;
   onPreviewAlternative: () => void;
+  onUseCurrentPlan: () => void;
   onSelectStrategy: (id: StrategyId) => void;
 }) {
   return (
@@ -230,6 +246,12 @@ function RecommendationEngine({
           ))}
         </div>
         <div className="mt-5 flex flex-wrap gap-2">
+          <button
+            onClick={onUseCurrentPlan}
+            className="rounded-full bg-black px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral-800"
+          >
+            Use Current Plan
+          </button>
           <button
             onClick={onPreviewAlternative}
             className="rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold"
@@ -377,6 +399,76 @@ function WorkflowProgress({
         ))}
       </div>
     </section>
+  );
+}
+
+function SaveCurrentPlanModal({
+  onCancel,
+  onSave,
+}: {
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  const summaryRows = [
+    ["Disease Site", "Pituitary Adenoma"],
+    ["Prescription", "25 Gy / 5 fx"],
+    ["Arcs", "4"],
+    ["Algorithm", "Monte Carlo"],
+    ["Target Priority", "High"],
+    ["OAR Priority", "High"],
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/35 px-4 backdrop-blur-sm">
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="save-current-plan-title"
+        className="w-full max-w-[520px] rounded-[24px] bg-white p-6 shadow-[0_24px_80px_rgba(0,0,0,0.25)]"
+      >
+        <h2
+          id="save-current-plan-title"
+          className="text-2xl font-semibold tracking-tight"
+        >
+          Save Current Plan
+        </h2>
+        <p className="mt-4 text-sm leading-6 text-neutral-600">
+          This planning strategy will be stored in the learning database and may
+          be used to inform future recommendations.
+        </p>
+
+        <div className="mt-6">
+          <p className="text-sm font-semibold text-neutral-900">Case Summary</p>
+          <div className="mt-3 border-t border-neutral-200 pt-4">
+            <div className="space-y-2">
+              {summaryRows.map(([label, value]) => (
+                <div key={label} className="flex justify-between gap-4 text-sm">
+                  <span className="font-medium text-neutral-500">{label}:</span>
+                  <span className="text-right font-semibold text-neutral-950">
+                    {value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-7 flex justify-end gap-3">
+          <button
+            onClick={onCancel}
+            className="rounded-full border border-neutral-200 bg-white px-5 py-2 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onSave}
+            className="rounded-full bg-black px-5 py-2 text-sm font-semibold text-white transition hover:bg-neutral-800"
+          >
+            Save
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 
