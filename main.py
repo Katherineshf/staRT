@@ -71,7 +71,7 @@ async def _load_past_cases() -> list[PastCase]:
     cached = await redis_client.get_json(CASES_ALL_KEY)
     if cached is not None:
         return [PastCase.model_validate(c) for c in cached]
-    cases = [PastCase.model_validate(c) for c in _load_json("past_cases.json")]
+    cases = [PastCase.model_validate(c) for c in _load_json("historical_plans.json")]
     await redis_client.set_json(CASES_ALL_KEY, [c.model_dump(mode="json") for c in cases])
     return cases
 
@@ -102,9 +102,9 @@ def _persist_prefs(prefs: PhysicianPreferences) -> None:
 
 
 def _append_case(case: PastCase) -> None:
-    data = _load_json("past_cases.json")
+    data = _load_json("historical_plans.json")
     data.append(case.model_dump(mode="json"))
-    _write_json("past_cases.json", data)
+    _write_json("historical_plans.json", data)
 
 
 @asynccontextmanager
