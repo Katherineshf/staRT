@@ -30,6 +30,8 @@ class PatientFeatures(StrictModel):
     age: int
     sex: str
     condition: str
+    prior_radiation: bool | None = None
+    recurrent_disease: bool | None = None
 
 
 class OARFeature(StrictModel):
@@ -50,7 +52,7 @@ class PlanningVariables(StrictModel):
     arcs: int | None = None
     arc_type: str | None = None
     ptv_margin_mm: float | None = None
-    oar_prv_margins: dict[str, float] = Field(default_factory=dict)
+    oar_prv_margins_mm: dict[str, float] = Field(default_factory=dict)
     target_priority: str | None = None
     normal_tissue_priority: str | None = None
     modulation_level: str | None = None
@@ -61,6 +63,9 @@ class OARResult(StrictModel):
     dmax_gy: float | None = None
     d0_2_gy: float | None = None
     d0_5_gy: float | None = None
+    d1cc_gy: float | None = None
+    mean_gy: float | None = None
+    v12_cc: float | None = None
 
 
 class PlanResults(StrictModel):
