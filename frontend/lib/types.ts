@@ -108,8 +108,8 @@ export interface PhysicianFeedbackRequest {
   run_id: string;
   physician_id: string;
   chosen_plan_id: string;
-  liked: string;
-  disliked: string;
+  reasoning: string;
+  concern?: string | null;
 }
 
 export interface PhysicianFeedbackResponse {

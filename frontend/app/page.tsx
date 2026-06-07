@@ -33,9 +33,17 @@ export default function Home() {
     useState<StrategyId | null>(null);
   const [acceptedStrategyId, setAcceptedStrategyId] =
     useState<StrategyId | null>(null);
+  // Persists Agent 3's learned note after the success modal is dismissed, so the
+  // Activity Log can show Agent 3's contribution for the rest of the run.
+  const [acceptedNote, setAcceptedNote] = useState<string | null>(null);
   const [savePlanOpen, setSavePlanOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState<{ note: string | null } | null>(
+    null,
+  );
+  const [feedbackReason, setFeedbackReason] = useState("");
+  const [feedbackConcern, setFeedbackConcern] = useState("");
 
   const selectedStrategy =
     strategies && selectedStrategyId ? strategies[selectedStrategyId] : null;
@@ -70,6 +78,7 @@ export default function Home() {
       setRunId(res.run_id);
       setSelectedStrategyId(null);
       setAcceptedStrategyId(null);
+      setAcceptedNote(null);
     } catch (err) {
       setGenerateError(
         err instanceof ApiError || err instanceof Error
@@ -86,37 +95,42 @@ export default function Home() {
     setActivePage("patient");
   }
 
-  function previewAlternative() {
-    setSelectedStrategyId((current) => (current === "A" ? "B" : "A"));
+  function closeSaveModal() {
+    setSavePlanOpen(false);
+    setSaveError(null);
+    setSaveSuccess(null);
+    setFeedbackReason("");
+    setFeedbackConcern("");
   }
 
-  function acceptStrategy() {
-    if (!selectedStrategy) return;
-    setAcceptedStrategyId(selectedStrategy.id);
-    setActivePage("engine");
-  }
-
-  // Modal "Save" — records the chosen plan via Agent 3 (POST /pipeline/feedback).
-  // liked/disliked are stubbed empty until the Accept-flow free-text UI is added.
+  // Modal "Accept & Save" — records the chosen plan and the physician's free-text
+  // reasoning via Agent 3 (POST /pipeline/feedback). The reasoning is what lets
+  // Agent 3 actually learn preferences; concern is optional context.
   async function saveCurrentPlan() {
     const chosen = selectedStrategy ?? (strategies ? strategies.A : null);
     if (!chosen || !runId) {
       setSaveError("Generate recommendations before saving a plan.");
       return;
     }
+    if (!feedbackReason.trim()) {
+      setSaveError("Add your reasoning for choosing this plan before saving.");
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     try {
-      await submitFeedback({
+      const res = await submitFeedback({
         run_id: runId,
         physician_id: PHYSICIAN_ID,
         chosen_plan_id: chosen.caseId,
-        liked: "",
-        disliked: "",
+        reasoning: feedbackReason.trim(),
+        concern: feedbackConcern.trim() || null,
       });
+      const notes = res.updated_preferences.notes;
+      const note = notes.length ? notes[notes.length - 1] : null;
       setAcceptedStrategyId(chosen.id);
-      setSavePlanOpen(false);
-      setActivePage("engine");
+      setAcceptedNote(note);
+      setSaveSuccess({ note });
     } catch (err) {
       setSaveError(
         err instanceof ApiError || err instanceof Error
@@ -135,7 +149,14 @@ export default function Home() {
 
         <div className="mt-7">
           {activePage === "patient" && (
-            <PatientView patient={patient} selectedStrategy={selectedStrategy} />
+            <PatientView
+              patient={patient}
+              selectedStrategy={selectedStrategy}
+              accepted={Boolean(
+                selectedStrategy && acceptedStrategyId === selectedStrategy.id,
+              )}
+              onAccept={() => setSavePlanOpen(true)}
+            />
           )}
           {activePage === "engine" && (
             <RecommendationEngine
@@ -145,10 +166,8 @@ export default function Home() {
               generateError={generateError}
               onGenerate={generate}
               acceptedStrategyId={acceptedStrategyId}
+              acceptedNote={acceptedNote}
               selectedStrategyId={selectedStrategyId}
-              onAcceptStrategy={acceptStrategy}
-              onPreviewAlternative={previewAlternative}
-              onUseCurrentPlan={() => setSavePlanOpen(true)}
               onSelectStrategy={selectStrategy}
             />
           )}
@@ -160,10 +179,12 @@ export default function Home() {
           patient={patient}
           saving={saving}
           error={saveError}
-          onCancel={() => {
-            setSavePlanOpen(false);
-            setSaveError(null);
-          }}
+          success={saveSuccess}
+          reason={feedbackReason}
+          concern={feedbackConcern}
+          onReasonChange={setFeedbackReason}
+          onConcernChange={setFeedbackConcern}
+          onClose={closeSaveModal}
           onSave={saveCurrentPlan}
         />
       )}
@@ -224,19 +245,40 @@ function TopBar({
 function PatientView({
   patient,
   selectedStrategy,
+  accepted,
+  onAccept,
 }: {
   patient: PatientVM | null;
   selectedStrategy: Strategy | null;
+  accepted: boolean;
+  onAccept: () => void;
 }) {
+  const subtitle = !selectedStrategy
+    ? "Select a strategy in the Recommendation Engine to review it here."
+    : accepted
+      ? "✓ Saved to the learning database. This case is complete."
+      : "Review the plan below, then accept it to save to the learning database.";
+
   return (
     <div className="space-y-7">
-      <BlackPanel
-        title={patient ? `${patient.condition} Case` : "Patient Case"}
-        kicker="MRI Viewer"
-        action={<DarkBadge>Illustrative — not this patient&apos;s scan</DarkBadge>}
-      >
-        <MriViewer />
-      </BlackPanel>
+      <section className="flex flex-wrap items-center justify-between gap-4 rounded-[22px] bg-white p-5 shadow-sm">
+        <div>
+          <p className="text-sm font-medium text-neutral-500">Patient View</p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-tight">
+            {selectedStrategy
+              ? `Reviewing ${selectedStrategy.name}`
+              : "No strategy selected"}
+          </h2>
+          <p className="mt-1 text-sm text-neutral-500">{subtitle}</p>
+        </div>
+        <button
+          onClick={onAccept}
+          disabled={!selectedStrategy || accepted}
+          className="rounded-full bg-[#46d47b] px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-[#37c06b] disabled:bg-neutral-200 disabled:text-neutral-400"
+        >
+          {accepted ? "Strategy Accepted ✓" : "Accept Strategy"}
+        </button>
+      </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <GeneralPlanCard patient={patient} strategy={selectedStrategy} />
@@ -255,10 +297,8 @@ function RecommendationEngine({
   generateError,
   onGenerate,
   acceptedStrategyId,
+  acceptedNote,
   selectedStrategyId,
-  onAcceptStrategy,
-  onPreviewAlternative,
-  onUseCurrentPlan,
   onSelectStrategy,
 }: {
   strategies: Record<StrategyId, Strategy> | null;
@@ -267,10 +307,8 @@ function RecommendationEngine({
   generateError: string | null;
   onGenerate: () => void;
   acceptedStrategyId: StrategyId | null;
+  acceptedNote: string | null;
   selectedStrategyId: StrategyId | null;
-  onAcceptStrategy: () => void;
-  onPreviewAlternative: () => void;
-  onUseCurrentPlan: () => void;
   onSelectStrategy: (id: StrategyId) => void;
 }) {
   const list = strategies ? Object.values(strategies) : [];
@@ -317,39 +355,16 @@ function RecommendationEngine({
             }
           />
         ) : (
-          <>
-            <div className="grid gap-5 lg:grid-cols-2">
-              {list.map((strategy) => (
-                <StrategyCard
-                  key={strategy.id}
-                  selected={selectedStrategyId === strategy.id}
-                  strategy={strategy}
-                  onSelect={() => onSelectStrategy(strategy.id)}
-                />
-              ))}
-            </div>
-            <div className="mt-5 flex flex-wrap gap-2">
-              <button
-                onClick={onUseCurrentPlan}
-                className="rounded-full bg-black px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral-800"
-              >
-                Use Current Plan
-              </button>
-              <button
-                onClick={onPreviewAlternative}
-                className="rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold"
-              >
-                Compare Outcomes
-              </button>
-              <button
-                onClick={onAcceptStrategy}
-                disabled={!selectedStrategyId}
-                className="rounded-full bg-[#46d47b] px-4 py-2 text-sm font-semibold text-black disabled:bg-neutral-200 disabled:text-neutral-400"
-              >
-                Accept Strategy
-              </button>
-            </div>
-          </>
+          <div className="grid gap-5 lg:grid-cols-2">
+            {list.map((strategy) => (
+              <StrategyCard
+                key={strategy.id}
+                selected={selectedStrategyId === strategy.id}
+                strategy={strategy}
+                onSelect={() => onSelectStrategy(strategy.id)}
+              />
+            ))}
+          </div>
         )}
       </WhitePanel>
 
@@ -358,7 +373,12 @@ function RecommendationEngine({
         kicker="Decision Support Only"
         action={<DarkBadge>Live run data</DarkBadge>}
       >
-        <ActivityLog runId={runId} strategies={list} />
+        <ActivityLog
+          runId={runId}
+          strategies={list}
+          acceptedStrategyId={acceptedStrategyId}
+          learnedNote={acceptedNote}
+        />
       </BlackPanel>
     </div>
   );
@@ -431,7 +451,7 @@ function StrategyCard({
             : "bg-black text-white hover:bg-neutral-800"
         }`}
       >
-        Select Strategy {strategy.id}
+        View Strategy {strategy.id}
       </button>
     </article>
   );
@@ -449,7 +469,7 @@ function WorkflowProgress({
   const steps = [
     { label: "Verify Inputs", complete: true },
     { label: "Generate Recommendations", complete: hasStrategies },
-    { label: "Compare Outcomes", complete: Boolean(selectedStrategyId) },
+    { label: "Review Plan", complete: Boolean(selectedStrategyId) },
     { label: "Select Strategy", complete: Boolean(selectedStrategyId) },
     { label: "Accept Strategy", complete: Boolean(acceptedStrategyId) },
     { label: "Save Plan", complete: Boolean(acceptedStrategyId) },
@@ -494,14 +514,24 @@ function SaveCurrentPlanModal({
   patient,
   saving,
   error,
-  onCancel,
+  success,
+  reason,
+  concern,
+  onReasonChange,
+  onConcernChange,
+  onClose,
   onSave,
 }: {
   strategy: Strategy | null;
   patient: PatientVM | null;
   saving: boolean;
   error: string | null;
-  onCancel: () => void;
+  success: { note: string | null } | null;
+  reason: string;
+  concern: string;
+  onReasonChange: (value: string) => void;
+  onConcernChange: (value: string) => void;
+  onClose: () => void;
   onSave: () => void;
 }) {
   const summaryRows: [string, string][] = [
@@ -514,63 +544,140 @@ function SaveCurrentPlanModal({
     ["OAR priority", strategy?.planning.oarPriority ?? DASH],
   ];
 
+  const textareaClass =
+    "mt-2 w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm leading-6 text-neutral-900 outline-none transition focus:border-neutral-400 focus:bg-white";
+
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/35 px-4 backdrop-blur-sm">
       <section
         role="dialog"
         aria-modal="true"
         aria-labelledby="save-current-plan-title"
-        className="w-full max-w-[520px] rounded-[24px] bg-white p-6 shadow-[0_24px_80px_rgba(0,0,0,0.25)]"
+        className="max-h-[90vh] w-full max-w-[520px] overflow-y-auto rounded-[24px] bg-white p-6 shadow-[0_24px_80px_rgba(0,0,0,0.25)]"
       >
-        <h2
-          id="save-current-plan-title"
-          className="text-2xl font-semibold tracking-tight"
-        >
-          Save Current Plan
-        </h2>
-        <p className="mt-4 text-sm leading-6 text-neutral-600">
-          This planning strategy will be stored in the learning database and may
-          be used to inform future recommendations.
-        </p>
-
-        <div className="mt-6">
-          <p className="text-sm font-semibold text-neutral-900">Case Summary</p>
-          <div className="mt-3 border-t border-neutral-200 pt-4">
-            <div className="space-y-2">
-              {summaryRows.map(([label, value]) => (
-                <div key={label} className="flex justify-between gap-4 text-sm">
-                  <span className="font-medium text-neutral-500">{label}:</span>
-                  <span className="text-right font-semibold text-neutral-950">
-                    {value}
-                  </span>
-                </div>
-              ))}
+        {success ? (
+          <div>
+            <div className="mb-4 grid size-12 place-items-center rounded-full bg-[#e6f7ec] text-2xl text-[#167a42]">
+              ✓
+            </div>
+            <h2
+              id="save-current-plan-title"
+              className="text-2xl font-semibold tracking-tight"
+            >
+              Recorded to the learning database
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-neutral-600">
+              Agent 3 captured your feedback for {strategy?.name ?? "this plan"} and
+              updated this physician&apos;s preference profile.
+            </p>
+            {success.note && (
+              <div className="mt-5 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3">
+                <p className="text-xs font-semibold uppercase text-neutral-400">
+                  Learned from this case
+                </p>
+                <p className="mt-1 text-sm leading-6 text-neutral-700">
+                  {success.note}
+                </p>
+              </div>
+            )}
+            <div className="mt-7 flex justify-end">
+              <button
+                onClick={onClose}
+                className="rounded-full bg-black px-5 py-2 text-sm font-semibold text-white transition hover:bg-neutral-800"
+              >
+                Done
+              </button>
             </div>
           </div>
-        </div>
+        ) : (
+          <div>
+            <h2
+              id="save-current-plan-title"
+              className="text-2xl font-semibold tracking-tight"
+            >
+              Accept &amp; Save Plan
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-neutral-600">
+              Your feedback is stored in the learning database and informs future
+              recommendations for this physician.
+            </p>
 
-        {error && (
-          <p className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-            {error}
-          </p>
+            <div className="mt-5 space-y-4">
+              <div>
+                <label
+                  htmlFor="feedback-reasoning"
+                  className="text-sm font-semibold text-neutral-900"
+                >
+                  Why this plan? <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  id="feedback-reasoning"
+                  value={reason}
+                  onChange={(e) => onReasonChange(e.target.value)}
+                  rows={3}
+                  placeholder="e.g. Coverage is sufficient and the tighter margin spares the brainstem; the higher MU is acceptable for this site."
+                  className={textareaClass}
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="feedback-concern"
+                  className="text-sm font-semibold text-neutral-900"
+                >
+                  Any concerns or what you&apos;d change?{" "}
+                  <span className="font-normal text-neutral-400">(optional)</span>
+                </label>
+                <textarea
+                  id="feedback-concern"
+                  value={concern}
+                  onChange={(e) => onConcernChange(e.target.value)}
+                  rows={2}
+                  placeholder="e.g. Watch the optic chiasm dose on the next fraction check."
+                  className={textareaClass}
+                />
+              </div>
+            </div>
+
+            <div className="mt-6">
+              <p className="text-sm font-semibold text-neutral-900">Case Summary</p>
+              <div className="mt-3 border-t border-neutral-200 pt-4">
+                <div className="space-y-2">
+                  {summaryRows.map(([label, value]) => (
+                    <div key={label} className="flex justify-between gap-4 text-sm">
+                      <span className="font-medium text-neutral-500">{label}:</span>
+                      <span className="text-right font-semibold text-neutral-950">
+                        {value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {error && (
+              <p className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                {error}
+              </p>
+            )}
+
+            <div className="mt-7 flex justify-end gap-3">
+              <button
+                onClick={onClose}
+                disabled={saving}
+                className="rounded-full border border-neutral-200 bg-white px-5 py-2 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={onSave}
+                disabled={saving || !reason.trim()}
+                className="rounded-full bg-black px-5 py-2 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:bg-neutral-400"
+              >
+                {saving ? "Saving…" : "Accept & Save"}
+              </button>
+            </div>
+          </div>
         )}
-
-        <div className="mt-7 flex justify-end gap-3">
-          <button
-            onClick={onCancel}
-            disabled={saving}
-            className="rounded-full border border-neutral-200 bg-white px-5 py-2 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50 disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onSave}
-            disabled={saving}
-            className="rounded-full bg-black px-5 py-2 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:bg-neutral-400"
-          >
-            {saving ? "Saving…" : "Save"}
-          </button>
-        </div>
       </section>
     </div>
   );
@@ -579,9 +686,13 @@ function SaveCurrentPlanModal({
 function ActivityLog({
   runId,
   strategies,
+  acceptedStrategyId,
+  learnedNote,
 }: {
   runId: string | null;
   strategies: Strategy[];
+  acceptedStrategyId: StrategyId | null;
+  learnedNote: string | null;
 }) {
   if (!runId || strategies.length === 0) {
     return (
@@ -590,6 +701,10 @@ function ActivityLog({
       </p>
     );
   }
+
+  const acceptedStrategy = acceptedStrategyId
+    ? strategies.find((s) => s.id === acceptedStrategyId)
+    : null;
 
   const items = [
     {
@@ -606,6 +721,19 @@ function ActivityLog({
       tone: "purple",
       meta: `risk ${s.riskScore}`,
     })),
+    ...(acceptedStrategy
+      ? [
+          {
+            agent: "Agent 3",
+            title: `Feedback recorded — Strategy ${acceptedStrategy.id} accepted`,
+            detail:
+              learnedNote ??
+              "Physician feedback captured; preference profile updated.",
+            tone: "green",
+            meta: "✓ saved",
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -645,7 +773,9 @@ function AgentBadge({
   const classes =
     tone === "blue"
       ? "bg-[#dbeafe] text-[#1d4ed8]"
-      : "bg-[#ede9fe] text-[#6d28d9]";
+      : tone === "green"
+        ? "bg-[#e6f7ec] text-[#167a42]"
+        : "bg-[#ede9fe] text-[#6d28d9]";
 
   return (
     <span
@@ -653,43 +783,6 @@ function AgentBadge({
     >
       {children}
     </span>
-  );
-}
-
-function MriViewer() {
-  return (
-    <div className="grid gap-5 lg:grid-cols-[96px_1fr_48px]">
-      <div className="hidden space-y-3 lg:block">
-        {[1, 2, 3].map((item) => (
-          <div
-            key={item}
-            className="relative h-24 overflow-hidden rounded-xl border border-white/15 bg-white/5 xl:h-[108px]"
-          >
-            <div className="absolute inset-4 rounded-full bg-[radial-gradient(circle,#f36f3d_0_16%,#ffe56a_17%_28%,#5de77e_29%_45%,transparent_46%)] opacity-75" />
-            <div className="absolute inset-x-4 top-1/2 h-px bg-white/25" />
-          </div>
-        ))}
-      </div>
-
-      <div className="relative min-h-[385px] overflow-hidden rounded-[22px] bg-[#030503] xl:min-h-[430px]">
-        <div className="absolute left-[7%] right-[7%] top-[20%] h-[58%] rounded-[50%] border border-white/10 bg-[radial-gradient(circle_at_28%_38%,#ff794d_0_9%,#fff074_10%_20%,#5bea82_21%_31%,transparent_32%),radial-gradient(circle_at_69%_35%,#ff744d_0_8%,#fff274_9%_17%,#5dea83_18%_28%,transparent_29%),radial-gradient(circle_at_34%_66%,#ff744d_0_8%,#fff274_9%_18%,#5dea83_19%_30%,transparent_31%),radial-gradient(circle_at_70%_65%,#ff744d_0_8%,#fff274_9%_17%,#5dea83_18%_29%,transparent_30%)] opacity-95" />
-        <div className="absolute left-[22%] top-[24%] h-[52%] w-[56%] rounded-[50%] border border-white/20 opacity-40 shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_0_40px_rgba(112,255,163,0.18)]" />
-        <div className="absolute inset-x-[14%] top-1/2 h-px bg-white/30" />
-        <div className="absolute left-1/2 top-1/2 size-14 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#ffcc57] bg-[#ffcc57]/25 shadow-[0_0_34px_rgba(255,204,87,0.42)]" />
-        <ViewerLabel className="left-[50%] top-[43%]" label="Tumor" tone="amber" />
-        <ViewerLabel className="left-[58%] top-[31%]" label="Optic chiasm" tone="green" />
-        <ViewerLabel className="left-[23%] top-[43%]" label="Optic nerve" tone="green" />
-        <ViewerLabel className="right-[14%] top-[56%]" label="Brainstem" tone="orange" />
-      </div>
-
-      <div className="hidden items-center justify-center lg:flex">
-        <div className="relative h-[300px] w-3 overflow-hidden rounded-full bg-gradient-to-t from-[#48e08b] via-[#f4ee66] to-[#eb553f]">
-          <span className="absolute -left-10 top-0 text-xs text-white/75">0.50</span>
-          <span className="absolute -left-10 top-1/2 text-xs text-white/75">0.25</span>
-          <span className="absolute -left-10 bottom-0 text-xs text-white/75">0.01</span>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -985,26 +1078,3 @@ function DarkBadge({ children }: { children: React.ReactNode }) {
   );
 }
 
-function ViewerLabel({
-  label,
-  tone,
-  className,
-}: {
-  label: string;
-  tone: "amber" | "green" | "orange";
-  className: string;
-}) {
-  const tones = {
-    amber: "border-[#ffcc57] text-[#ffe7a8]",
-    green: "border-[#65ee98] text-[#c6f8d7]",
-    orange: "border-[#ff805d] text-[#ffd0c2]",
-  };
-
-  return (
-    <div
-      className={`absolute rounded-full border bg-black/45 px-3 py-1 text-xs font-semibold backdrop-blur ${tones[tone]} ${className}`}
-    >
-      {label}
-    </div>
-  );
-}
